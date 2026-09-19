@@ -24,6 +24,9 @@ export const appConfig = registerAs("app", () => ({
   poolCacheTtl: parseInt(process.env.POOL_CACHE_TTL || "300", 10),
   tomlCacheTtl: parseInt(process.env.TOML_CACHE_TTL || "86400", 10),
 
+  anchorHomeDomain: process.env.ANCHOR_HOME_DOMAIN || "tr-mock-anchor.fly.dev",
+  anchorAssetCode: process.env.ANCHOR_ASSET_CODE || "USDC",
+
   jwtSecret: process.env.JWT_SECRET || "fallback-secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
 }));

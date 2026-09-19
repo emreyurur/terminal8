@@ -9,6 +9,7 @@ import { OrchestratorModule } from "./modules/orchestrator/orchestrator.module";
 import { PortfolioModule } from "./modules/portfolio/portfolio.module";
 import { TestnetToolsModule } from "./modules/testnet-tools/testnet-tools.module";
 import { HistoryModule } from "./modules/history/history.module";
+import { AnchorModule } from "./modules/anchor/anchor.module";
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { HistoryModule } from "./modules/history/history.module";
     PortfolioModule,
     TestnetToolsModule,
     HistoryModule,
+    AnchorModule,
   ],
   controllers: [AppController],
   providers: [AppService],
