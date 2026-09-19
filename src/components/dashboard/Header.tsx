@@ -5,14 +5,15 @@ import { useWallet } from '../../context/useWallet'
 import type { WalletErrorType } from '../../context/WalletContext'
 
 type HeaderProps = {
-  activePage: 'landing' | 'home' | 'studio' | 'docs' | 'tester'
-  onPageChange: (page: 'landing' | 'home' | 'studio' | 'docs' | 'tester') => void
+  activePage: 'landing' | 'home' | 'studio' | 'ramp' | 'docs' | 'tester'
+  onPageChange: (page: 'landing' | 'home' | 'studio' | 'ramp' | 'docs' | 'tester') => void
   onToggleTerminal?: () => void
 }
 
-const NAV_LABELS: Record<'home' | 'studio' | 'docs', string> = {
+const NAV_LABELS: Record<'home' | 'studio' | 'ramp' | 'docs', string> = {
   home: 'Home',
   studio: 'Token Studio',
+  ramp: 'Ramp',
   docs: 'Docs',
 }
 
@@ -38,7 +39,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderPro
   const accountMenuRef = useRef<HTMLDivElement>(null)
   const connected = status === 'CONNECTED' && publicKey
 
-  const handleCopyAddress = async (e: React.MouseEvent) => {
+  const handleCopyAddress = async (e: React.SyntheticEvent) => {
     e.stopPropagation()
     if (!publicKey) return
     try {
@@ -136,11 +137,20 @@ export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderPro
               ) : connected ? (
                 <span className="inline-flex items-center gap-1.5">
                   <span>{truncatePublicKey(publicKey)}</span>
-                  <button
-                    className="inline-flex rounded p-0.5 transition hover:bg-white/[0.15] hover:text-[#F2C12E]"
+                  {/* span (not button): this sits inside the wallet <button>, nested buttons are invalid HTML */}
+                  <span
+                    aria-label="Copy address"
+                    className="inline-flex cursor-pointer rounded p-0.5 transition hover:bg-white/[0.15] hover:text-[#F2C12E]"
                     onClick={handleCopyAddress}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        void handleCopyAddress(e)
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                     title="Copy address"
-                    type="button"
                   >
                     {copied ? (
                       <svg className="size-3.5 text-[#16A34A]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -151,7 +161,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderPro
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
                       </svg>
                     )}
-                  </button>
+                  </span>
                 </span>
               ) : (
                 'Connect Wallet'
@@ -226,7 +236,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderPro
           id="navbar-sticky"
         >
           <ul className="mt-4 flex flex-col rounded-xl border border-white/[0.08] bg-[#12121A] p-4 font-medium md:mt-0 md:flex-row md:items-center md:space-x-8 md:border-0 md:bg-transparent md:p-0 rtl:space-x-reverse">
-            {(['home', 'studio', 'docs'] as const).map((page) => (
+            {(['home', 'studio', 'ramp', 'docs'] as const).map((page) => (
               <li key={page}>
                 <button
                   aria-pressed={activePage === page}

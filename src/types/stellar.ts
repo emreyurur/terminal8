@@ -39,6 +39,8 @@ export type WalletBalance = {
   balance: string
   assetType: string
   isNative: boolean
+  /** Set for liquidity pool share lines (Horizon gives them no asset code). */
+  poolId?: string
 }
 
 export type YieldPosition = {

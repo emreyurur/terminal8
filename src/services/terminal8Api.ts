@@ -475,3 +475,20 @@ export async function fetchTransactionHistory(
     return []
   }
 }
+
+/**
+ * Reads the wallet's LP share balance for a pool straight from Horizon.
+ * Returns null when the account has no share line for that pool.
+ */
+export async function getOnChainLpShares(
+  horizonUrl: string,
+  publicKey: string,
+  poolId: string,
+): Promise<string | null> {
+  const res = await fetch(`${horizonUrl.replace(/\/$/, '')}/accounts/${publicKey}`)
+  if (!res.ok) throw new Error(`Horizon returned ${res.status} while reading LP shares.`)
+  const account = (await res.json()) as {
+    balances: { liquidity_pool_id?: string; balance: string }[]
+  }
+  return account.balances.find((b) => b.liquidity_pool_id === poolId)?.balance ?? null
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useWallet } from '../context/useWallet'
 import type { WalletBalance } from '../types/stellar'
 
@@ -7,6 +7,7 @@ type HorizonBalance = {
   asset_issuer?: string
   asset_type: string
   balance: string
+  liquidity_pool_id?: string
 }
 
 type HorizonAccountResponse = {
@@ -24,13 +25,17 @@ function toWalletBalance(balance: HorizonBalance): WalletBalance {
   const code = isNative ? 'XLM' : balance.asset_code ?? 'UNKNOWN'
   const issuer = isNative ? 'native' : balance.asset_issuer ?? 'unknown issuer'
 
+  // LP share lines carry no code/issuer, so every pool would otherwise get the same id.
+  const poolId = balance.liquidity_pool_id
+
   return {
-    id: `${code}-${issuer}`,
+    id: poolId ? `lp-${poolId}` : `${code}-${issuer}`,
     code,
     issuer,
     balance: balance.balance,
     assetType: balance.asset_type,
     isNative,
+    ...(poolId ? { poolId } : {}),
   }
 }
 
@@ -40,6 +45,8 @@ export function useWalletBalances() {
   const [balanceStatus, setBalanceStatus] = useState<BalanceState>('idle')
   const [balanceError, setBalanceError] = useState<string | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  // Stable identity: consumers use it in effect dependencies, so it must not change when balances do.
+  const refreshBalances = useCallback(() => setRefreshTrigger((n) => n + 1), [])
   const ready = status === 'CONNECTED' && Boolean(publicKey) && Boolean(networkUrl)
 
   useEffect(() => {
@@ -108,8 +115,8 @@ export function useWalletBalances() {
       balances: ready ? balances : [],
       balanceStatus: ready ? balanceStatus : 'idle',
       balanceError: ready ? balanceError : null,
-      refreshBalances: () => setRefreshTrigger((n) => n + 1),
+      refreshBalances,
     }),
-    [balanceError, balanceStatus, balances, ready],
+    [balanceError, balanceStatus, balances, ready, refreshBalances],
   )
 }

@@ -93,7 +93,7 @@ function estimateApy(pool: ApiPool): number {
   return parseFloat((feePct * 365 * volumeRatio).toFixed(1))
 }
 
-function mapApiPoolToDeFiPool(pool: ApiPool): DeFiPool {
+export function mapApiPoolToDeFiPool(pool: ApiPool): DeFiPool {
   const reputation = deriveReputation(pool)
   const risk = deriveRisk(reputation)
   const { tvl, tvlRaw } = formatTvl(pool.reserveA, pool.reserveB)

@@ -3,6 +3,8 @@ import { DefiOperations } from './components/dashboard/DefiOperations'
 import { Header } from './components/dashboard/Header'
 import { RiskQuiz } from './components/dashboard/RiskQuiz'
 import { ApiTesterView } from './components/dashboard/ApiTesterView'
+import { RampView } from './components/dashboard/RampView'
+import { WalletHoldings } from './components/dashboard/WalletHoldings'
 import { TokenStudioView } from './components/dashboard/TokenStudioView'
 import { DocsPage } from './components/docs/DocsPage'
 import { LandingPage } from './components/landing/LandingPage'
@@ -11,9 +13,11 @@ import type { CommandContext, TerminalLine } from './components/terminal/command
 import { WalletProvider } from './context/WalletContext'
 import { useWallet } from './context/useWallet'
 import { useWalletBalances } from './hooks/useWalletBalances'
+import { addPosition, mergePositionsByPool } from './lib/positions'
+import { recoverLpPositions } from './services/positionRecovery'
 import type { LocalPosition, RiskProfile, WalletBalance } from './types/stellar'
 
-export type AppPage = 'landing' | 'home' | 'studio' | 'docs' | 'tester'
+export type AppPage = 'landing' | 'home' | 'studio' | 'ramp' | 'docs' | 'tester'
 
 const initialLines: TerminalLine[] = [
   { id: 'boot-1', kind: 'log', text: 'Soroban RPC ready. Type help for commands.' },
@@ -34,7 +38,7 @@ function loadPositionsFromStorage(pubKey?: string | null): LocalPosition[] {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}_${pubKey}`)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed)) return mergePositionsByPool(parsed)
     }
   } catch {
     /* ignore storage read errors */
@@ -56,7 +60,7 @@ const ACTIVE_PAGE_STORAGE_KEY = 'terminal8_active_page'
 function getStoredActivePage(): AppPage {
   try {
     const saved = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) as AppPage | null
-    if (saved && ['landing', 'home', 'studio', 'docs', 'tester'].includes(saved)) {
+    if (saved && ['landing', 'home', 'studio', 'ramp', 'docs', 'tester'].includes(saved)) {
       return saved
     }
   } catch {
@@ -67,7 +71,7 @@ function getStoredActivePage(): AppPage {
 
 function AppInner() {
   const { networkPassphrase, networkUrl, publicKey, status } = useWallet()
-  const { balances, refreshBalances } = useWalletBalances()
+  const { balances, balanceError, balanceStatus, refreshBalances } = useWalletBalances()
 
   const [activePageRaw, setActivePageRaw] = useState<AppPage>(() => getStoredActivePage())
 
@@ -95,6 +99,32 @@ function AppInner() {
       setLocalPositions(loadPositionsFromStorage(publicKey))
     })
   }, [publicKey])
+
+  // Positions live in this browser only. If the wallet holds LP shares the browser knows nothing about
+  // (new device, cleared site data), rebuild them from chain so they show up again.
+  useEffect(() => {
+    if (status !== 'CONNECTED' || !publicKey || !networkUrl) return
+    const controller = new AbortController()
+    const known = new Set(loadPositionsFromStorage(publicKey).map((p) => p.poolId))
+
+    recoverLpPositions(networkUrl, publicKey, known, controller.signal)
+      .then((recovered) => {
+        if (controller.signal.aborted || recovered.length === 0) return
+        setLocalPositions((current) => {
+          const have = new Set(current.map((p) => p.poolId))
+          const additions = recovered.filter((p) => !have.has(p.poolId))
+          if (additions.length === 0) return current
+          const next = mergePositionsByPool([...current, ...additions])
+          savePositionsToStorage(next, publicKey)
+          return next
+        })
+      })
+      .catch(() => {
+        /* recovery is best effort; local records keep working */
+      })
+
+    return () => controller.abort()
+  }, [status, publicKey, networkUrl])
 
   useEffect(() => {
     let lastCtrlKTime = 0
@@ -141,15 +171,17 @@ function AppInner() {
 
   const handlePositionAdded = useCallback((pos: Omit<LocalPosition, 'id'>) => {
     setLocalPositions((current) => {
-      const next = [
-        { ...pos, id: `${pos.hash || pos.poolId}-${Date.now()}` },
-        ...current,
-      ]
+      const next = addPosition(current, { ...pos, id: `${pos.hash || pos.poolId}-${Date.now()}` })
       savePositionsToStorage(next, publicKey)
       return next
     })
     refreshBalances()
   }, [publicKey, refreshBalances])
+
+  // Balances change outside Home (ramp, token studio), so reload them each time Home is opened.
+  useEffect(() => {
+    if (activePage === 'home') refreshBalances()
+  }, [activePage, refreshBalances])
 
   const xlmBalance = getBestTokenBalance(balances, 'XLM')
   const usdcBalance = getBestTokenBalance(balances, 'USDC')
@@ -196,6 +228,16 @@ function AppInner() {
       >
         {activePage === 'home' ? (
           <div className="space-y-6">
+            {status === 'CONNECTED' && (
+              <WalletHoldings
+                balances={balances}
+                error={balanceError}
+                loading={balanceStatus === 'loading'}
+                onOpenRamp={() => setActivePage('ramp')}
+                onRefresh={refreshBalances}
+              />
+            )}
+
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-[#F2C12E]/40 bg-[#F2C12E]/10 px-5 py-4 text-sm text-[#F0F0F0] shadow-lg">
               <div className="flex items-center gap-3">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-[#F2C12E] text-base font-bold text-[#0D0D12]">
@@ -230,6 +272,8 @@ function AppInner() {
           </div>
         ) : activePage === 'studio' ? (
           <TokenStudioView />
+        ) : activePage === 'ramp' ? (
+          <RampView onBalancesChanged={refreshBalances} />
         ) : activePage === 'tester' ? (
           <ApiTesterView />
         ) : (

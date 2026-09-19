@@ -5,7 +5,13 @@ import aquaLogo from '../../assets/aquaris.svg'
 import { useWallet } from '../../context/useWallet'
 import { usePoolRisk } from '../../hooks/usePoolRisk'
 import { usePoolDashboard } from '../../hooks/usePoolDashboard'
-import { executeApiPoolTransaction, fetchTransactionHistory, type ApiHistoryItem } from '../../services/terminal8Api'
+import {
+  executeApiPoolTransaction,
+  fetchTransactionHistory,
+  getOnChainLpShares,
+  type ApiHistoryItem,
+} from '../../services/terminal8Api'
+import { computeWithdrawShares } from '../../lib/lpShares'
 import { executeOnChainTrustVote, fetchOnChainPoolScore } from '../../services/poolVotingContract'
 import { estimateSecondaryAmount } from '../../services/soroswapLiquidity'
 import { signTransaction } from '@stellar/freighter-api'
@@ -306,6 +312,7 @@ export function PoolDetailsView({
   const [withdrawAmount, setWithdrawAmount] = useState<number>(0)
   const [withdrawTxState, setWithdrawTxState] = useState<'idle' | 'signing' | 'submitted' | 'error'>('idle')
   const [withdrawTxHash, setWithdrawTxHash] = useState<string | null>(null)
+  const [withdrawTxMessage, setWithdrawTxMessage] = useState<string | null>(null)
   const [actionTab, setActionTab] = useState<'deposit' | 'withdraw'>('deposit')
 
   // On-Chain Trust Score Voting State (with localStorage persistence across page refreshes)
@@ -626,15 +633,23 @@ export function PoolDetailsView({
     if (!isConnected || !publicKey || !networkUrl || !networkPassphrase || !isTestnet) return
     try {
       setWithdrawTxState('signing')
+      setWithdrawTxMessage(null)
+      const amountToWithdraw = withdrawAmount || pos.amount
+      // The chain withdraws LP shares, not the recorded position amount: map the selection onto the real share balance.
+      const onChainShares = await getOnChainLpShares(networkUrl, publicKey, pool.id)
+      const shareAmount = computeWithdrawShares(onChainShares, amountToWithdraw, pos.amount)
+      if (!(shareAmount > 0)) {
+        throw new Error('No LP shares found for this pool in your wallet.')
+      }
       const result = await executeApiPoolTransaction({
         publicKey,
         signTransactionFn: signTransaction,
         params: {
           poolId: pool.id,
           action: 'WITHDRAW',
-          amountA: withdrawAmount || pos.amount,
+          amountA: amountToWithdraw,
           amountB: 0,
-          shareAmount: withdrawAmount || pos.amount,
+          shareAmount,
           slippageBps: 50,
           userAddress: publicKey,
         },
@@ -642,10 +657,11 @@ export function PoolDetailsView({
       setWithdrawTxState('submitted')
       setWithdrawTxHash(result.hash)
       if (onPositionRemoved) {
-        onPositionRemoved(pos.id, withdrawAmount || pos.amount)
+        onPositionRemoved(pos.id, amountToWithdraw)
       }
-    } catch {
+    } catch (error) {
       setWithdrawTxState('error')
+      setWithdrawTxMessage(error instanceof Error ? error.message : 'Withdraw failed.')
     }
   }
 
@@ -1397,6 +1413,12 @@ export function PoolDetailsView({
                 <span>Transaction Settings</span>
                 <span className="cursor-pointer hover:text-white">⚙</span>
               </div>
+
+              {withdrawTxState === 'error' && withdrawTxMessage && (
+                <p className="mt-4 break-words rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                  {withdrawTxMessage}
+                </p>
+              )}
 
               {withdrawTxState === 'submitted' && withdrawTxHash && (
                 <div className="mt-4 rounded-xl border border-[#16A34A]/30 bg-[#16A34A]/10 p-4">
