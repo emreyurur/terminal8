@@ -27,6 +27,12 @@ export const appConfig = registerAs("app", () => ({
   anchorHomeDomain: process.env.ANCHOR_HOME_DOMAIN || "tr-mock-anchor.fly.dev",
   anchorAssetCode: process.env.ANCHOR_ASSET_CODE || "USDC",
 
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  alertFromEmail: process.env.ALERT_FROM_EMAIL || "Terminal8 <onboarding@resend.dev>",
+  alertsEnabled: process.env.ALERTS_ENABLED !== "false",
+  alertCheckIntervalMs: parseInt(process.env.ALERT_CHECK_INTERVAL_MS || "60000", 10),
+  maxAlertsPerUser: parseInt(process.env.MAX_ALERTS_PER_USER || "20", 10),
+
   jwtSecret: process.env.JWT_SECRET || "fallback-secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
 }));
