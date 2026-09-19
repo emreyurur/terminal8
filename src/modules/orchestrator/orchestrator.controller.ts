@@ -8,6 +8,8 @@ import {
 import { OrchestratorService } from "./orchestrator.service";
 import { BuildTransactionDto } from "./dto/transaction-request.dto";
 import { BuiltTransactionDto } from "./dto/transaction-response.dto";
+import { BuildSingleAssetDepositDto } from "./dto/single-asset-request.dto";
+import { SingleAssetDepositService } from "./services/single-asset-deposit.service";
 import { JwtAuthGuard } from "../../core/auth/auth.guard";
 import { CurrentUserPublicKey } from "../../shared/decorators/public-key.decorator";
 
@@ -16,7 +18,10 @@ import { CurrentUserPublicKey } from "../../shared/decorators/public-key.decorat
 @UseGuards(JwtAuthGuard)
 @Controller("api/v1/transactions")
 export class OrchestratorController {
-  constructor(private readonly orchestratorService: OrchestratorService) {}
+  constructor(
+    private readonly orchestratorService: OrchestratorService,
+    private readonly singleAssetDeposit: SingleAssetDepositService,
+  ) {}
 
   @Post("build")
   @ApiOperation({ summary: "Build an unsigned XDR for deposit or withdrawal" })
@@ -30,6 +35,19 @@ export class OrchestratorController {
     @Body() dto: BuildTransactionDto,
   ): Promise<BuiltTransactionDto> {
     return this.orchestratorService.buildTransaction(publicKey, dto);
+  }
+
+  @Post("single-asset-deposit")
+  @ApiOperation({
+    summary: "Build one XDR that swaps part of a single asset and deposits into the pool",
+    description:
+      "For users holding only one pool asset. Returns the unsigned XDR (trustlines if needed, strict-receive swap, LP deposit) and a plan describing the swap. All operations are atomic.",
+  })
+  async buildSingleAssetDeposit(
+    @CurrentUserPublicKey() publicKey: string,
+    @Body() dto: BuildSingleAssetDepositDto,
+  ) {
+    return this.singleAssetDeposit.build(publicKey, dto);
   }
 
   // Frontend bu XDR'ı alıp imzalar ve Stellar ağına gönderir.
