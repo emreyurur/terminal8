@@ -12,6 +12,7 @@ import {
   type ApiHistoryItem,
 } from '../../services/terminal8Api'
 import { computeWithdrawShares } from '../../lib/lpShares'
+import { SingleAssetDepositPanel } from './SingleAssetDepositPanel'
 import { executeOnChainTrustVote, fetchOnChainPoolScore } from '../../services/poolVotingContract'
 import { estimateSecondaryAmount } from '../../services/soroswapLiquidity'
 import { signTransaction } from '@stellar/freighter-api'
@@ -266,6 +267,37 @@ function PerformanceAreaChart({
   )
 }
 
+function DepositModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: 'both' | 'single'
+  onChange: (mode: 'both' | 'single') => void
+}) {
+  const options: { id: 'both' | 'single'; label: string }[] = [
+    { id: 'both', label: 'Both assets' },
+    { id: 'single', label: 'Single asset' },
+  ]
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.05] p-1" role="tablist">
+      {options.map((o) => (
+        <button
+          aria-selected={mode === o.id}
+          className={`rounded-lg py-2 text-xs font-semibold transition ${
+            mode === o.id ? 'bg-[#F2C12E] text-[#0D0D12]' : 'text-[#9CA3AF] hover:text-white'
+          }`}
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          role="tab"
+          type="button"
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Main Kamino-Style Pool Details View ──────────────────────────────────────
 
 export function PoolDetailsView({
@@ -304,6 +336,7 @@ export function PoolDetailsView({
 
   // Deposit Form State
   const [amount, setAmount] = useState<number>(0)
+  const [depositMode, setDepositMode] = useState<'both' | 'single'>('both')
   const [txState, setTxState] = useState<'idle' | 'signing' | 'submitted' | 'error'>('idle')
   const [txMessage, setTxMessage] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -1202,8 +1235,20 @@ export function PoolDetailsView({
             </button>
           </div>
 
-          {actionTab === 'deposit' ? (
+          {actionTab === 'deposit' && isLP && depositMode === 'single' ? (
             <>
+              <DepositModeToggle mode={depositMode} onChange={setDepositMode} />
+              <SingleAssetDepositPanel
+                canSign={canSign}
+                networkUrl={networkUrl}
+                onPositionAdded={onPositionAdded}
+                pool={pool}
+                publicKey={publicKey}
+              />
+            </>
+          ) : actionTab === 'deposit' ? (
+            <>
+              {isLP && <DepositModeToggle mode={depositMode} onChange={setDepositMode} />}
               <div className="mb-3 flex items-center justify-between text-xs">
                 <span className="font-medium text-[#9CA3AF]">You Deposit</span>
                 <span className="font-mono text-[#9CA3AF]">~${usdValue.toFixed(2)}</span>

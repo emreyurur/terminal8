@@ -47,7 +47,7 @@ async function request(path: string, init: RequestInit & { anchor?: boolean; aut
   return text ? JSON.parse(text) : {}
 }
 
-async function signToString(sign: SignFn, xdr: string, networkPassphrase: string, account: string) {
+export async function signToString(sign: SignFn, xdr: string, networkPassphrase: string, account: string) {
   const res = await sign(xdr, { networkPassphrase, accountToSign: account })
   const signed = typeof res === 'string' ? res : res.signedTxXdr
   if (!signed) {
