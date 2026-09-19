@@ -5,15 +5,18 @@ import { useWallet } from '../../context/useWallet'
 import type { WalletErrorType } from '../../context/WalletContext'
 
 type HeaderProps = {
-  activePage: 'landing' | 'home' | 'studio' | 'ramp' | 'docs' | 'tester'
-  onPageChange: (page: 'landing' | 'home' | 'studio' | 'ramp' | 'docs' | 'tester') => void
+  activePage: 'landing' | 'home' | 'studio' | 'ramp' | 'alerts' | 'docs' | 'tester'
+  onPageChange: (page: 'landing' | 'home' | 'studio' | 'ramp' | 'alerts' | 'docs' | 'tester') => void
   onToggleTerminal?: () => void
+  /** Fired alerts not yet acknowledged, shown as a badge on the Alerts tab. */
+  unreadAlerts?: number
 }
 
-const NAV_LABELS: Record<'home' | 'studio' | 'ramp' | 'docs', string> = {
+const NAV_LABELS: Record<'home' | 'studio' | 'ramp' | 'alerts' | 'docs', string> = {
   home: 'Home',
   studio: 'Token Studio',
   ramp: 'Ramp',
+  alerts: 'Alerts',
   docs: 'Docs',
 }
 
@@ -31,7 +34,7 @@ const ERROR_LABELS: Record<WalletErrorType, string> = {
   unknown: 'Connection Error',
 }
 
-export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderProps) {
+export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlerts = 0 }: HeaderProps) {
   const { connect, error, errorType, publicKey, reset, status } = useWallet()
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -236,7 +239,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderPro
           id="navbar-sticky"
         >
           <ul className="mt-4 flex flex-col rounded-xl border border-white/[0.08] bg-[#12121A] p-4 font-medium md:mt-0 md:flex-row md:items-center md:space-x-8 md:border-0 md:bg-transparent md:p-0 rtl:space-x-reverse">
-            {(['home', 'studio', 'ramp', 'docs'] as const).map((page) => (
+            {(['home', 'studio', 'ramp', 'alerts', 'docs'] as const).map((page) => (
               <li key={page}>
                 <button
                   aria-pressed={activePage === page}
@@ -252,6 +255,11 @@ export function Header({ activePage, onPageChange, onToggleTerminal }: HeaderPro
                   type="button"
                 >
                   {NAV_LABELS[page]}
+                  {page === 'alerts' && unreadAlerts > 0 && (
+                    <span className="ml-1.5 rounded-full bg-[#F2C12E] px-1.5 py-0.5 text-[10px] font-bold text-[#0D0D12]">
+                      {unreadAlerts}
+                    </span>
+                  )}
                 </button>
               </li>
             ))}

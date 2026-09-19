@@ -1,0 +1,114 @@
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AlertNotification } from '../services/alertsApi'
+
+const fetchNotifications = vi.fn()
+const markNotificationsRead = vi.fn()
+
+vi.mock('../services/alertsApi', () => ({
+  AlertsAuthError: class AlertsAuthError extends Error {},
+  fetchNotifications: (...a: unknown[]) => fetchNotifications(...a),
+  markNotificationsRead: (...a: unknown[]) => markNotificationsRead(...a),
+}))
+
+import { useAlertNotifications } from './useAlertNotifications'
+
+const note = (id: number, popup = true): AlertNotification => ({
+  id,
+  alertId: 'a',
+  message: `alert ${id}`,
+  value: 1,
+  popup,
+  createdAt: '',
+  readAt: null,
+})
+
+const shownTitles: string[] = []
+function stubNotification(permission: NotificationPermission) {
+  class Fake {
+    static permission = permission
+    onclick: (() => void) | null = null
+    constructor(title: string, opts: { body: string }) {
+      shownTitles.push(`${title}: ${opts.body}`)
+    }
+    close() {}
+  }
+  vi.stubGlobal('Notification', Fake)
+}
+
+async function flush() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1)
+  })
+}
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  shownTitles.length = 0
+  fetchNotifications.mockReset()
+  markNotificationsRead.mockReset().mockResolvedValue({ updated: 1 })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+describe('useAlertNotifications', () => {
+  it('does nothing without a connected wallet', async () => {
+    stubNotification('granted')
+    renderHook(() => useAlertNotifications(null, () => {}))
+    await flush()
+    expect(fetchNotifications).not.toHaveBeenCalled()
+  })
+
+  it('shows each fired alert once and marks it read', async () => {
+    stubNotification('granted')
+    fetchNotifications.mockResolvedValue([note(1), note(2)])
+    const { result } = renderHook(() => useAlertNotifications('GKEY', () => {}))
+    await flush()
+
+    expect(shownTitles).toEqual(['Terminal8 alert: alert 1', 'Terminal8 alert: alert 2'])
+    expect(markNotificationsRead).toHaveBeenCalledWith([1, 2])
+    expect(result.current.unreadCount).toBe(0)
+
+    // the next poll returns the same rows (server hasn't caught up): no repeat popups
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(shownTitles).toHaveLength(2)
+  })
+
+  it('keeps alerts unread when the browser will not show them', async () => {
+    stubNotification('denied')
+    fetchNotifications.mockResolvedValue([note(5)])
+    const { result } = renderHook(() => useAlertNotifications('GKEY', () => {}))
+    await flush()
+
+    expect(shownTitles).toHaveLength(0)
+    expect(markNotificationsRead).not.toHaveBeenCalled()
+    expect(result.current.unreadCount).toBe(1)
+  })
+
+  it('skips alerts that opted out of the browser popup', async () => {
+    stubNotification('granted')
+    fetchNotifications.mockResolvedValue([note(9, false)])
+    const { result } = renderHook(() => useAlertNotifications('GKEY', () => {}))
+    await flush()
+
+    expect(shownTitles).toHaveLength(0)
+    expect(result.current.unreadCount).toBe(1)
+  })
+
+  it('polls again on the interval', async () => {
+    stubNotification('granted')
+    fetchNotifications.mockResolvedValue([])
+    renderHook(() => useAlertNotifications('GKEY', () => {}))
+    await flush()
+    const first = fetchNotifications.mock.calls.length
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(fetchNotifications.mock.calls.length).toBeGreaterThan(first)
+  })
+})

@@ -3,6 +3,7 @@ import { DefiOperations } from './components/dashboard/DefiOperations'
 import { Header } from './components/dashboard/Header'
 import { RiskQuiz } from './components/dashboard/RiskQuiz'
 import { ApiTesterView } from './components/dashboard/ApiTesterView'
+import { AlertsView } from './components/dashboard/AlertsView'
 import { RampView } from './components/dashboard/RampView'
 import { WalletHoldings } from './components/dashboard/WalletHoldings'
 import { TokenStudioView } from './components/dashboard/TokenStudioView'
@@ -14,10 +15,11 @@ import { WalletProvider } from './context/WalletContext'
 import { useWallet } from './context/useWallet'
 import { useWalletBalances } from './hooks/useWalletBalances'
 import { addPosition, mergePositionsByPool } from './lib/positions'
+import { useAlertNotifications } from './hooks/useAlertNotifications'
 import { recoverLpPositions } from './services/positionRecovery'
 import type { LocalPosition, RiskProfile, WalletBalance } from './types/stellar'
 
-export type AppPage = 'landing' | 'home' | 'studio' | 'ramp' | 'docs' | 'tester'
+export type AppPage = 'landing' | 'home' | 'studio' | 'ramp' | 'alerts' | 'docs' | 'tester'
 
 const initialLines: TerminalLine[] = [
   { id: 'boot-1', kind: 'log', text: 'Soroban RPC ready. Type help for commands.' },
@@ -60,7 +62,7 @@ const ACTIVE_PAGE_STORAGE_KEY = 'terminal8_active_page'
 function getStoredActivePage(): AppPage {
   try {
     const saved = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) as AppPage | null
-    if (saved && ['landing', 'home', 'studio', 'ramp', 'docs', 'tester'].includes(saved)) {
+    if (saved && ['landing', 'home', 'studio', 'ramp', 'alerts', 'docs', 'tester'].includes(saved)) {
       return saved
     }
   } catch {
@@ -85,6 +87,10 @@ function AppInner() {
   }, [])
 
   const activePage = activePageRaw
+  const { unreadCount: unreadAlerts, refresh: refreshAlerts } = useAlertNotifications(
+    status === 'CONNECTED' ? publicKey : null,
+    useCallback(() => setActivePage('alerts'), [setActivePage]),
+  )
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>(initialLines)
@@ -219,6 +225,7 @@ function AppInner() {
         activePage={activePage}
         onPageChange={setActivePage}
         onToggleTerminal={() => setTerminalOpen(true)}
+        unreadAlerts={unreadAlerts}
       />
 
       <main
@@ -272,6 +279,8 @@ function AppInner() {
           </div>
         ) : activePage === 'studio' ? (
           <TokenStudioView />
+        ) : activePage === 'alerts' ? (
+          <AlertsView onSessionChange={refreshAlerts} positions={localPositions} />
         ) : activePage === 'ramp' ? (
           <RampView onBalancesChanged={refreshBalances} />
         ) : activePage === 'tester' ? (
