@@ -6,6 +6,7 @@ import { ApiTesterView } from './components/dashboard/ApiTesterView'
 import { AlertsView } from './components/dashboard/AlertsView'
 import { RampView } from './components/dashboard/RampView'
 import { WalletHoldings } from './components/dashboard/WalletHoldings'
+import { FundingPanel } from './components/dashboard/FundingPanel'
 import { TokenStudioView } from './components/dashboard/TokenStudioView'
 import { DocsPage } from './components/docs/DocsPage'
 import { LandingPage } from './components/landing/LandingPage'
@@ -243,6 +244,10 @@ function AppInner() {
                 onOpenRamp={() => setActivePage('ramp')}
                 onRefresh={refreshBalances}
               />
+            )}
+
+            {status === 'CONNECTED' && (
+              <FundingPanel onBalancesChanged={refreshBalances} />
             )}
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-[#F2C12E]/40 bg-[#F2C12E]/10 px-5 py-4 text-sm text-[#F0F0F0] shadow-lg">
