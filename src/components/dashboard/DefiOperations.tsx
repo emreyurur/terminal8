@@ -1,4 +1,5 @@
 import { Component, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ChevronRight, Search } from 'lucide-react'
 import xlmLogo from '../../assets/xlm.svg'
 import usdcLogo from '../../assets/usdc.svg'
 import aquaLogo from '../../assets/aquaris.svg'
@@ -68,6 +69,22 @@ function formatUsd(val: number | string): string {
 function formatAmount(val: number | string, decimals = 2): string {
   const num = Number(val) || 0
   return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+}
+
+function formatTokenAmount(val: number | string): string {
+  const num = Number(val) || 0
+  if (num > 0 && num < 0.01) return '<0.01'
+  return num.toLocaleString('en-US', { maximumFractionDigits: 2 })
+}
+
+function formatEarnedAmount(val: number): string {
+  if (val > 0 && val < 0.01) return '<0.01'
+  return `+${formatTokenAmount(val)}`
+}
+
+function formatEarnedUsd(val: number): string {
+  if (val > 0 && val < 0.01) return '<$0.01'
+  return `+$${formatUsd(val)}`
 }
 
 // ─── Token Avatars Helper ────────────────────────────────────────────────────────
@@ -197,7 +214,6 @@ export function DefiOperations({
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null)
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'overview' | 'position'>('overview')
-  const [expandedReputation, setExpandedReputation] = useState<string | null>(null)
   const [filterTab, setFilterTab] = useState<'all' | 'stables' | 'xlm'>('all')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -332,27 +348,18 @@ export function DefiOperations({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Kamino-Style Positions Section (My Overview) */}
-          {positions.length > 0 && (
+          {displayPositions.length > 0 && (
             <div className="space-y-6">
               {/* Header Title */}
               <div>
-                <h2 className="text-2xl font-bold text-white">Lending & Yield Positions</h2>
+                <h2 className="text-lg font-medium text-white">My positions</h2>
                 <p className="mt-1 text-sm text-[#9CA3AF]">
-                  Earn yield via curated vaults on Stellar DeFi.
+                  Track supplied liquidity and accrued yield.
                 </p>
               </div>
 
-              {/* Sub-tabs */}
-              <div className="flex gap-6 border-b border-white/[0.08]">
-                <span className="relative pb-3 text-sm font-semibold text-white">
-                  My Overview
-                  <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#3B82F6]" />
-                </span>
-              </div>
-
-              {/* 4 Summary Cards Row */}
               {(() => {
                 const totalValUsd = displayPositions.reduce((acc, p) => {
                   const price = p.asset === 'XLM' ? 0.12 : 1
@@ -377,136 +384,92 @@ export function DefiOperations({
                 const displayEarned = totalEarnedUsd
 
                 return (
-                  <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-                      <p className="text-xs text-[#9CA3AF]">Active Positions</p>
-                      <p className="mt-2 font-mono text-2xl font-bold text-white">{displayCount}</p>
+                  <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-white/[0.07] bg-[#0F141C] lg:grid-cols-4">
+                    <div className="p-4 sm:px-5">
+                      <p className="text-xs text-[#718096]">Positions</p>
+                      <p className="mt-1.5 text-lg font-medium text-white">{displayCount}</p>
                     </div>
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-                      <p className="text-xs text-[#9CA3AF]">Positions Value</p>
-                      <p className="mt-2 font-mono text-2xl font-bold text-white">${formatUsd(displayValUsd)}</p>
+                    <div className="border-l border-white/[0.07] p-4 sm:px-5">
+                      <p className="text-xs text-[#718096]">Supplied</p>
+                      <p className="mt-1.5 text-lg font-medium text-white">${formatUsd(displayValUsd)}</p>
                     </div>
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-                      <p className="text-xs text-[#9CA3AF]">Avg APY</p>
-                      <p className="mt-2 font-mono text-2xl font-bold text-[#16A34A]">{formatAmount(displayApy, 2)}%</p>
+                    <div className="border-t border-white/[0.07] p-4 sm:px-5 lg:border-l lg:border-t-0">
+                      <p className="text-xs text-[#718096]">Avg APY</p>
+                      <p className="mt-1.5 text-lg font-medium text-[#35D49A]">{formatAmount(displayApy, 1)}%</p>
                     </div>
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-                      <p className="text-xs text-[#9CA3AF]">Interest Earned</p>
-                      <p className="mt-2 font-mono text-2xl font-bold text-[#16A34A]">+${formatAmount(displayEarned, 4)}</p>
+                    <div className="border-l border-t border-white/[0.07] p-4 sm:px-5 lg:border-t-0">
+                      <p className="text-xs text-[#718096]">Earned</p>
+                      <p className="mt-1.5 text-lg font-medium text-[#35D49A]">{formatEarnedUsd(displayEarned)}</p>
                     </div>
                   </div>
                 )
               })()}
 
-              {/* Positions Table Container */}
-              <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#111119]">
-                <div className="min-w-[1050px]">
-                  {/* Table Header */}
-                  <div className="grid grid-cols-[minmax(220px,2fr)_240px_130px_170px_160px_110px] items-center gap-6 border-b border-white/[0.08] px-6 py-3.5 text-xs font-semibold text-[#9CA3AF]">
-                    <span>Asset</span>
-                    <span>Position Value</span>
-                    <span>Supply APY</span>
-                    <span>Interest Earned</span>
-                    <span>Vault Profile</span>
-                    <span />
-                  </div>
+              <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-[#0F141C]">
+                <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(180px,1.2fr)_110px_minmax(170px,1.2fr)_100px] items-center gap-6 border-b border-white/[0.07] px-6 py-3.5 text-xs font-medium text-[#718096] lg:grid">
+                  <span>Position</span>
+                  <span>Supplied</span>
+                  <span>APY</span>
+                  <span>Earned</span>
+                  <span />
+                </div>
+                <div className="divide-y divide-white/[0.06]">
+                  {displayPositions.map((pos) => {
+                    const matchingPool = findMatchingPool(pos, allKnownPools, activePools[0] || stellarPools[0])
+                    const price = pos.asset === 'XLM' ? 0.12 : 1
+                    const posValUsd = pos.amount * price
+                    const elapsed = getNowTimestamp() - pos.openedAt
+                    const hours = elapsed / 3_600_000
+                    const earned = pos.amount * (pos.apy / 100) * (hours / 8760)
+                    const earnedUsd = earned * price
+                    const posPair = matchingPool.secondaryAsset
+                      ? `${matchingPool.asset} / ${matchingPool.secondaryAsset}`
+                      : pos.asset === 'XLM' ? 'XLM / USDC' : `${pos.asset} / XLM`
+                    const openPosition = () => {
+                      setSelectedPositionId(pos.id)
+                      setDetailTab('position')
+                      setSelectedPoolId(matchingPool.id)
+                    }
 
-                  {/* Table Rows */}
-                  <div className="divide-y divide-white/[0.06]">
-                    {displayPositions.map((pos) => {
-                        const matchingPool = findMatchingPool(pos, allKnownPools, activePools[0] || stellarPools[0])
-                        const price = pos.asset === 'XLM' ? 0.12 : 1
-                        const posValUsd = pos.amount * price
-                        const elapsed = getNowTimestamp() - pos.openedAt
-                        const hours = elapsed / 3_600_000
-                        const earned = pos.amount * (pos.apy / 100) * (hours / 8760)
-                        const earnedUsd = earned * price
+                    return (
+                      <div key={pos.id}>
+                        <button className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 px-4 py-4 text-left transition hover:bg-white/[0.02] lg:hidden" onClick={openPosition} type="button">
+                          <span className="flex min-w-0 items-center gap-3">
+                            <TokenAvatar code={pos.asset} size="md" />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-white">{posPair}</span>
+                              <span className="mt-0.5 block truncate text-xs text-[#718096]">{matchingPool.protocol}</span>
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-2 text-sm font-medium text-[#35D49A]">
+                            {formatAmount(pos.apy, 1)}% <ChevronRight size={16} className="text-[#718096]" />
+                          </span>
+                          <span className="col-start-1 text-xs text-[#98A6B7]">{formatTokenAmount(pos.amount)} {pos.asset} · ${formatUsd(posValUsd)}</span>
+                          <span className="col-start-2 text-right text-xs text-[#35D49A]">{formatEarnedUsd(earnedUsd)}</span>
+                        </button>
 
-                        const posPair = matchingPool.secondaryAsset
-                          ? `${matchingPool.asset}/${matchingPool.secondaryAsset}`
-                          : pos.asset === 'XLM'
-                          ? 'XLM/USDC'
-                          : `${pos.asset}/XLM`
-
-                        return (
-                        <div
-                          key={pos.id}
-                          className="grid grid-cols-[minmax(220px,2fr)_240px_130px_170px_160px_110px] items-center gap-6 px-6 py-4 transition hover:bg-white/[0.02]"
-                        >
-                          {/* Asset */}
-                          <div className="flex items-center gap-3 min-w-0">
+                        <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(180px,1.2fr)_110px_minmax(170px,1.2fr)_100px] items-center gap-6 px-6 py-4 transition hover:bg-white/[0.02] lg:grid">
+                          <div className="flex min-w-0 items-center gap-3">
                             <TokenAvatar code={pos.asset} size="md" />
                             <div className="min-w-0">
-                              <p className="text-sm font-bold text-white truncate">
-                                {matchingPool.protocol} {pos.asset}
-                              </p>
-                              <p className="text-xs text-[#9CA3AF] truncate">{matchingPool.protocol} Protocol</p>
+                              <p className="truncate text-sm font-medium text-white">{posPair}</p>
+                              <p className="mt-0.5 truncate text-xs text-[#718096]">{matchingPool.protocol}</p>
                             </div>
                           </div>
-
-                          {/* Position Value */}
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2 whitespace-nowrap">
-                              <p className="text-sm font-semibold text-white truncate">
-                                {formatAmount(pos.amount, 2)} {pos.asset}
-                              </p>
-                              <span className="shrink-0 rounded bg-white/[0.06] px-2 py-0.5 text-[11px] font-bold text-[#F2C12E] border border-white/[0.08]">
-                                {posPair}
-                              </span>
-                            </div>
-                            <p className="mt-0.5 text-xs text-[#9CA3AF] whitespace-nowrap">${formatUsd(posValUsd)}</p>
+                            <p className="truncate text-sm font-medium text-white">{formatTokenAmount(pos.amount)} {pos.asset}</p>
+                            <p className="mt-0.5 text-xs text-[#718096]">${formatUsd(posValUsd)}</p>
                           </div>
-
-                          {/* Supply APY */}
+                          <span className="text-sm font-medium text-[#35D49A]">{formatAmount(pos.apy, 1)}%</span>
                           <div className="min-w-0">
-                            <span className="text-sm font-bold text-[#16A34A] whitespace-nowrap">
-                              {formatAmount(pos.apy, 2)}%
-                            </span>
+                            <p className="truncate text-sm font-medium text-[#35D49A]">{formatEarnedAmount(earned)} {pos.asset}</p>
+                            <p className="mt-0.5 text-xs text-[#718096]">{formatEarnedUsd(earnedUsd)}</p>
                           </div>
-
-                          {/* Interest Earned */}
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#16A34A] whitespace-nowrap truncate">
-                              +{formatAmount(earned, 4)} {pos.asset}
-                            </p>
-                            <p className="mt-0.5 text-xs text-[#9CA3AF] whitespace-nowrap">+${formatAmount(earnedUsd, 4)}</p>
-                          </div>
-
-                          {/* Vault Profile */}
-                          <div className="min-w-0">
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1 text-xs font-medium text-white whitespace-nowrap">
-                              <svg className="size-4 shrink-0 text-[#22C55E]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                              </svg>
-                              {matchingPool.risk === 'Moderate' ? 'Conservative' : matchingPool.risk}
-                            </span>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setSelectedPositionId(pos.id)
-                                setDetailTab('position')
-                                setSelectedPoolId(matchingPool.id)
-                              }}
-                              className="rounded-xl border border-white/[0.12] bg-white/[0.06] px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/[0.15]"
-                              type="button"
-                            >
-                              Manage
-                            </button>
-                          </div>
+                          <button className="h-9 rounded-md bg-[#1A2230] px-4 text-sm font-medium text-white transition hover:bg-[#222C3B]" onClick={openPosition} type="button">Manage</button>
                         </div>
-                      )
-                    })}
-                    {displayPositions.length === 0 && (
-                      <div className="py-12 text-center text-sm text-[#9CA3AF]">
-                        {!publicKey
-                          ? 'Connect your wallet to view your active positions.'
-                          : 'No active positions found.'}
                       </div>
-                    )}
-                  </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -514,8 +477,8 @@ export function DefiOperations({
 
           {/* Kamino-Style Featured Strip */}
           <div>
-            <SectionLabel>Featured Vaults & Pools</SectionLabel>
-            <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            <SectionLabel>Featured pools</SectionLabel>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {featuredPools.map((pool) => {
                 const pairLabel = pool.secondaryAsset ? `${pool.asset} / ${pool.secondaryAsset}` : pool.asset
                 return (
@@ -525,10 +488,10 @@ export function DefiOperations({
                       setDetailTab('overview')
                       setSelectedPoolId(pool.id)
                     }}
-                    className={`group relative cursor-pointer overflow-hidden rounded-2xl border p-5 transition-all duration-200 ${
+                    className={`group relative cursor-pointer overflow-hidden rounded-xl border p-5 transition-all duration-200 ${
                       selectedPoolId === pool.id
-                        ? 'border-[#F2C12E] bg-[#141420] shadow-[0_0_24px_rgba(242,193,46,0.15)]'
-                        : 'border-white/[0.08] bg-[#12121A] hover:border-white/[0.18] hover:bg-[#161622]'
+                        ? 'border-[#F2C12E]/55 bg-[#171A1D]'
+                        : 'border-white/[0.07] bg-[#101923] hover:border-white/[0.16] hover:bg-[#131E29]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -543,20 +506,18 @@ export function DefiOperations({
                         </div>
                         <span className="text-sm font-semibold text-[#F0F0F0]">{pairLabel}</span>
                       </div>
-                      <span className="rounded-lg bg-white/[0.06] px-2 py-1 text-[10px] font-medium text-[#9CA3AF]">
+                      <span className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-[#98A6B7]">
                         {pool.tvl} TVL
                       </span>
                     </div>
 
                     <div className="mt-4 flex items-end justify-between">
                       <div>
-                        <p className="text-2xl font-bold text-[#F2C12E]">{pool.apy.toFixed(2)}% <span className="text-xs font-normal text-[#9CA3AF]">APY</span></p>
+                        <p className="text-3xl font-medium leading-8 text-[#F2C12E]">{pool.apy.toFixed(2)}% <span className="text-xs font-medium text-[#F2C12E]">APY</span></p>
                         <p className="mt-0.5 text-xs text-[#9CA3AF]">{pool.protocol}</p>
                       </div>
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-[#F0F0F0] transition group-hover:border-[#F2C12E]/50 group-hover:text-[#F2C12E]">
-                        <svg className="size-3.5 transition-transform duration-200 group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                        </svg>
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-[#98A6B7] transition group-hover:bg-[#F2C12E]/10 group-hover:text-[#F2C12E]">
+                        <ChevronRight size={16} />
                       </div>
                     </div>
                   </div>
@@ -567,8 +528,8 @@ export function DefiOperations({
 
           {/* Kamino-Style Filter & Search Bar */}
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-4 border-b border-white/[0.07] pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
                 {[
                   { key: 'all' as const, label: 'All Vaults' },
                   { key: 'stables' as const, label: 'Stables' },
@@ -578,10 +539,10 @@ export function DefiOperations({
                     key={tab.key}
                     onClick={() => setFilterTab(tab.key)}
                     type="button"
-                    className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
+                    className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-all ${
                       filterTab === tab.key
-                        ? 'bg-[#F2C12E] text-[#0D0D12] shadow-[0_0_16px_rgba(242,193,46,0.25)]'
-                        : 'border border-white/[0.08] bg-[#12121A] text-[#9CA3AF] hover:border-white/[0.15] hover:text-[#F0F0F0]'
+                        ? 'border border-[#F2C12E]/55 bg-[#F2C12E]/10 text-white'
+                        : 'bg-[#141A24] text-[#98A6B7] hover:bg-[#19212D] hover:text-white'
                     }`}
                   >
                     {tab.key === 'stables' && <span className="font-bold">$</span>}
@@ -591,32 +552,33 @@ export function DefiOperations({
                 ))}
               </div>
 
-              <div className="flex items-center gap-4">
-                <span className="text-xs text-[#9CA3AF]">
+              <div className="flex items-center gap-3">
+                <span className="hidden text-xs text-[#718096] sm:inline">
                   Showing {filteredPools.length} of {activePools.length} vaults
                 </span>
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#718096]" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search Assets or Pools..."
-                    className="w-60 rounded-xl border border-white/[0.08] bg-[#12121A] px-3.5 py-2 text-xs text-[#F0F0F0] placeholder-[#6B7280] outline-none transition focus:border-[#F2C12E]/50"
+                    className="h-9 w-full rounded-full border border-white/[0.07] bg-[#141A24] pl-9 pr-4 text-sm text-white placeholder-[#718096] outline-none transition focus:border-[#F2C12E]/45 sm:w-64"
                   />
                 </div>
               </div>
             </div>
 
             {/* Kamino-Style Pools Table */}
-            <div className="mt-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111118]">
+            <div className="mt-5 overflow-hidden rounded-xl border border-white/[0.07] bg-[#0C1118]">
               {/* Table Header */}
-              <div className="grid grid-cols-[minmax(0,2.8fr)_120px_140px_160px_150px_130px] items-center gap-8 border-b border-white/[0.08] px-8 py-5 text-xs font-semibold tracking-wider text-[#6B7280] lg:gap-12">
+              <div className="hidden grid-cols-[minmax(0,2.8fr)_110px_130px_150px_140px_110px] items-center gap-6 border-b border-white/[0.07] px-6 py-3.5 text-xs font-medium text-[#718096] lg:grid">
                 <span>Vault</span>
                 <span>APY</span>
                 <span>Deposits</span>
                 <span>Vault Profile</span>
                 <span>Trust Score</span>
-                <span className="text-right">Action</span>
+                <span>Action</span>
               </div>
 
               {/* Table Rows */}
@@ -630,12 +592,39 @@ export function DefiOperations({
 
                   return (
                     <div key={pool.id}>
+                      <button
+                        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 px-4 py-4 text-left transition-colors lg:hidden ${
+                          isSelected ? 'bg-[#F2C12E]/[0.06]' : 'hover:bg-white/[0.025]'
+                        }`}
+                        onClick={() => {
+                          setDetailTab('overview')
+                          setSelectedPoolId(pool.id)
+                        }}
+                        type="button"
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="flex shrink-0">
+                            <TokenAvatar code={pool.asset} />
+                            {pool.secondaryAsset && <span className="-ml-2.5"><TokenAvatar code={pool.secondaryAsset} /></span>}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-white">{pairLabel}</span>
+                            <span className="mt-0.5 block truncate text-xs text-[#718096]">{pool.protocol}</span>
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-[#35D49A]">{pool.apy.toFixed(2)}%</span>
+                          <ChevronRight size={16} className="text-[#718096]" />
+                        </span>
+                        <span className="col-start-1 text-xs text-[#718096]">Deposits</span>
+                        <span className="col-start-2 text-right text-xs font-medium text-[#D7DEE8]">{pool.tvl}</span>
+                      </button>
                       <div
                         onClick={() => {
                           setDetailTab('overview')
                           setSelectedPoolId(pool.id)
                         }}
-                        className={`grid cursor-pointer grid-cols-[minmax(0,2.8fr)_120px_140px_160px_150px_130px] items-center gap-8 px-8 py-5 transition-colors lg:gap-12 ${
+                        className={`hidden cursor-pointer grid-cols-[minmax(0,2.8fr)_110px_130px_150px_140px_110px] items-center gap-6 px-6 py-4 transition-colors lg:grid ${
                           isSelected ? 'bg-[#F2C12E]/[0.06]' : 'hover:bg-white/[0.03]'
                         }`}
                       >
@@ -651,7 +640,7 @@ export function DefiOperations({
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="truncate text-sm font-semibold text-[#F0F0F0]">{pairLabel}</span>
+                              <span className="truncate text-sm font-medium text-[#F0F0F0]">{pairLabel}</span>
                               {isRecommended && (
                                 <span className="shrink-0 rounded-full bg-[#16A34A]/20 px-2 py-0.5 text-[10px] font-bold text-[#16A34A]">
                                   ★ Recommended
@@ -663,16 +652,16 @@ export function DefiOperations({
                         </div>
 
                         {/* APY */}
-                        <span className="text-sm font-bold text-[#16A34A]">
+                        <span className="text-sm font-medium text-[#35D49A]">
                           {pool.apy.toFixed(2)}%
                         </span>
 
                         {/* Deposits */}
-                        <span className="text-sm font-medium text-[#F0F0F0]">{pool.tvl}</span>
+                        <span className="text-sm font-medium text-[#D7DEE8]">{pool.tvl}</span>
 
                         {/* Vault Profile (Risk badge) */}
-                        <div>
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-[#F0F0F0]">
+                        <div className="flex items-center">
+                          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/[0.07] bg-white/[0.035] px-2.5 text-xs font-medium leading-none text-[#D7DEE8]">
                             <span
                               className={`size-1.5 rounded-full ${
                                 pool.risk === 'Conservative'
@@ -687,27 +676,24 @@ export function DefiOperations({
                         </div>
 
                         {/* Trust Score */}
-                        <div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setExpandedReputation(expandedReputation === pool.id ? null : pool.id)
-                            }}
-                            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                        <div className="flex items-center">
+                          <span
+                            className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium leading-none ${
                               label === 'Trusted'
-                                ? 'border-[#16A34A]/30 bg-[#16A34A]/10 text-[#16A34A]'
+                                ? 'border-[#35D49A]/20 bg-[#35D49A]/[0.07] text-[#35D49A]'
                                 : label === 'Moderate'
-                                  ? 'border-[#F2C12E]/30 bg-[#F2C12E]/10 text-[#F2C12E]'
-                                  : 'border-red-400/30 bg-red-400/10 text-red-400'
+                                  ? 'border-[#F2C12E]/20 bg-[#F2C12E]/[0.07] text-[#F2C12E]'
+                                  : 'border-red-400/20 bg-red-400/[0.07] text-red-400'
                             }`}
                           >
-                            {score} · {label}
-                          </button>
+                            <span className="tabular-nums">{score}</span>
+                            <span className="opacity-50">&middot;</span>
+                            <span>{label}</span>
+                          </span>
                         </div>
 
                         {/* Action */}
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-start">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -715,22 +701,16 @@ export function DefiOperations({
                               setDetailTab('overview')
                               setSelectedPoolId(pool.id)
                             }}
-                            className={`rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
+                            className={`h-9 w-[88px] rounded-md px-3 text-sm font-medium transition-all ${
                               isSelected
-                                ? 'bg-[#F2C12E] text-[#0D0D12] shadow-[0_0_16px_rgba(242,193,46,0.3)]'
-                                : 'bg-white/[0.08] text-[#F0F0F0] hover:bg-white/[0.15]'
+                                ? 'bg-[#F2C12E] text-[#0D0D12]'
+                                : 'bg-[#1A2230] text-[#F0F0F0] hover:bg-[#222C3B]'
                             }`}
                           >
                             {isSelected ? 'Selected ✓' : 'Deposit'}
                           </button>
                         </div>
                       </div>
-
-                      {expandedReputation === pool.id && (
-                        <div className="border-t border-white/[0.04] bg-[#14141E] px-6 py-4">
-                          <ReputationBreakdown reputation={pool.reputation} score={score} />
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -1540,7 +1520,7 @@ function formatElapsed(ms: number) {
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9CA3AF]">{children}</p>
+    <h2 className="text-lg font-medium text-white">{children}</h2>
   )
 }
 

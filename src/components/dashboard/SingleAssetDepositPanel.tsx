@@ -2,17 +2,17 @@ import { useMemo, useState } from 'react'
 import { StellarWalletsKit } from '@creit.tech/stellar-wallets-kit'
 import { useSingleAssetSides } from '../../hooks/useSingleAssetSides'
 import { positionAmountFromPlan } from '../../lib/singleAsset'
-import type { SignFn } from '../../services/rampApi'
 import {
   previewSingleAssetDeposit,
   submitSingleAssetDeposit,
   type SingleAssetBuild,
 } from '../../services/singleAssetDeposit'
+import type { FreighterSignFn } from '../../services/terminal8Api'
 import type { DeFiPool, LocalPosition } from '../../types/stellar'
 
 const SLIPPAGE_OPTIONS = [50, 100, 200] as const
 
-const sign: SignFn = (xdr, opts) =>
+const sign: FreighterSignFn = (xdr, opts) =>
   StellarWalletsKit.signTransaction(xdr, { networkPassphrase: opts.networkPassphrase, address: opts.accountToSign })
 
 const fmt = (n: number, max = 4) => n.toLocaleString(undefined, { maximumFractionDigits: max })

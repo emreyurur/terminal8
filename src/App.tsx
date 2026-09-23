@@ -3,11 +3,8 @@ import { DefiOperations } from './components/dashboard/DefiOperations'
 import { Header } from './components/dashboard/Header'
 import { RiskQuiz } from './components/dashboard/RiskQuiz'
 import { ApiTesterView } from './components/dashboard/ApiTesterView'
-import { AlertsView } from './components/dashboard/AlertsView'
-import { RampView } from './components/dashboard/RampView'
-import { WalletHoldings } from './components/dashboard/WalletHoldings'
-import { FundingPanel } from './components/dashboard/FundingPanel'
-import { TokenStudioView } from './components/dashboard/TokenStudioView'
+import { NotificationsPanel } from './components/dashboard/NotificationsPanel'
+import type { AlertNotification } from './services/alertsApi'
 import { DocsPage } from './components/docs/DocsPage'
 import { LandingPage } from './components/landing/LandingPage'
 import { BottomTerminal, CommandPalette } from './components/terminal/CommandPalette'
@@ -15,16 +12,16 @@ import type { CommandContext, TerminalLine } from './components/terminal/command
 import { WalletProvider } from './context/WalletContext'
 import { useWallet } from './context/useWallet'
 import { useWalletBalances } from './hooks/useWalletBalances'
-import { addPosition, mergePositionsByPool } from './lib/positions'
 import { useAlertNotifications } from './hooks/useAlertNotifications'
+import { addPosition, mergePositionsByPool } from './lib/positions'
 import { recoverLpPositions } from './services/positionRecovery'
 import type { LocalPosition, RiskProfile, WalletBalance } from './types/stellar'
 
-export type AppPage = 'landing' | 'home' | 'studio' | 'ramp' | 'alerts' | 'docs' | 'tester'
+export type AppPage = 'landing' | 'home' | 'docs' | 'tester'
 
 const initialLines: TerminalLine[] = [
   { id: 'boot-1', kind: 'log', text: 'Soroban RPC ready. Type help for commands.' },
-  { id: 'boot-2', kind: 'log', text: 'positions · withdraw <n> --full · pools · balance' },
+  { id: 'boot-2', kind: 'log', text: 'positions - withdraw <n> --full - pools - balance' },
 ]
 
 function getBestTokenBalance(balances: WalletBalance[], code: string): number {
@@ -36,7 +33,7 @@ function getBestTokenBalance(balances: WalletBalance[], code: string): number {
 const STORAGE_KEY_PREFIX = 'terminal8_user_positions'
 
 function loadPositionsFromStorage(pubKey?: string | null): LocalPosition[] {
-  if (!pubKey) return [] // No wallet connected -> 0 positions!
+  if (!pubKey) return []
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}_${pubKey}`)
     if (raw) {
@@ -46,7 +43,7 @@ function loadPositionsFromStorage(pubKey?: string | null): LocalPosition[] {
   } catch {
     /* ignore storage read errors */
   }
-  return [] // Empty default! NO MOCKS!
+  return []
 }
 
 function savePositionsToStorage(positions: LocalPosition[], pubKey?: string | null) {
@@ -62,9 +59,10 @@ const ACTIVE_PAGE_STORAGE_KEY = 'terminal8_active_page'
 
 function getStoredActivePage(): AppPage {
   try {
-    const saved = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) as AppPage | null
-    if (saved && ['landing', 'home', 'studio', 'ramp', 'alerts', 'docs', 'tester'].includes(saved)) {
-      return saved
+    const saved = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY)
+    if (saved === 'alerts') return 'home'
+    if (saved && ['landing', 'home', 'docs', 'tester'].includes(saved)) {
+      return saved as AppPage
     }
   } catch {
     /* ignore */
@@ -74,7 +72,7 @@ function getStoredActivePage(): AppPage {
 
 function AppInner() {
   const { networkPassphrase, networkUrl, publicKey, status } = useWallet()
-  const { balances, balanceError, balanceStatus, refreshBalances } = useWalletBalances()
+  const { balances, refreshBalances } = useWalletBalances()
 
   const [activePageRaw, setActivePageRaw] = useState<AppPage>(() => getStoredActivePage())
 
@@ -88,9 +86,16 @@ function AppInner() {
   }, [])
 
   const activePage = activePageRaw
-  const { unreadCount: unreadAlerts, refresh: refreshAlerts } = useAlertNotifications(
+  const [notificationPanel, setNotificationPanel] = useState<{ scope: string; notification?: AlertNotification } | null>(null)
+  const notificationScope = `${status}:${publicKey}:${networkPassphrase}`
+  const openNotifications = useCallback((notification?: AlertNotification) => {
+    setNotificationPanel({ scope: notificationScope, notification })
+    if (activePageRaw === 'landing') setActivePage('home')
+  }, [notificationScope, activePageRaw, setActivePage])
+  const alertsModel = useAlertNotifications(
     status === 'CONNECTED' ? publicKey : null,
-    useCallback(() => setActivePage('alerts'), [setActivePage]),
+    openNotifications,
+    networkPassphrase ?? '',
   )
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
@@ -107,8 +112,6 @@ function AppInner() {
     })
   }, [publicKey])
 
-  // Positions live in this browser only. If the wallet holds LP shares the browser knows nothing about
-  // (new device, cleared site data), rebuild them from chain so they show up again.
   useEffect(() => {
     if (status !== 'CONNECTED' || !publicKey || !networkUrl) return
     const controller = new AbortController()
@@ -136,6 +139,7 @@ function AppInner() {
   useEffect(() => {
     let lastCtrlKTime = 0
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         lastCtrlKTime = Date.now()
@@ -185,7 +189,6 @@ function AppInner() {
     refreshBalances()
   }, [publicKey, refreshBalances])
 
-  // Balances change outside Home (ramp, token studio), so reload them each time Home is opened.
   useEffect(() => {
     if (activePage === 'home') refreshBalances()
   }, [activePage, refreshBalances])
@@ -221,56 +224,27 @@ function AppInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0E] text-[#F0F0F0]">
+    <div className="min-h-screen bg-[#080B10] text-[#F0F0F0]">
       <Header
         activePage={activePage}
         onPageChange={setActivePage}
         onToggleTerminal={() => setTerminalOpen(true)}
-        unreadAlerts={unreadAlerts}
+        unreadAlerts={alertsModel.unreadCount}
+        notificationsOpen={notificationPanel?.scope === notificationScope}
+        onOpenNotifications={() => openNotifications()}
       />
 
       <main
-        className={`mx-auto w-full max-w-[1440px] px-5 py-6 sm:px-8 ${
+        className={`terminal8-product-ui mx-auto w-full ${
+          activePage === 'docs'
+            ? 'max-w-[1440px] px-4 py-0 sm:px-6'
+            : 'max-w-[1280px] px-4 py-8 sm:px-6 sm:py-10'
+        } ${
           terminalOpen ? 'pb-88' : 'pb-20'
         }`}
       >
         {activePage === 'home' ? (
           <div className="space-y-6">
-            {status === 'CONNECTED' && (
-              <WalletHoldings
-                balances={balances}
-                error={balanceError}
-                loading={balanceStatus === 'loading'}
-                onOpenRamp={() => setActivePage('ramp')}
-                onRefresh={refreshBalances}
-              />
-            )}
-
-            {status === 'CONNECTED' && (
-              <FundingPanel onBalancesChanged={refreshBalances} />
-            )}
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-[#F2C12E]/40 bg-[#F2C12E]/10 px-5 py-4 text-sm text-[#F0F0F0] shadow-lg">
-              <div className="flex items-center gap-3">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-[#F2C12E] text-base font-bold text-[#0D0D12]">
-                  ⚠️
-                </span>
-                <div>
-                  <p className="font-bold text-white">Stellar Testnet Phase Notice</p>
-                  <p className="mt-0.5 text-xs text-[#E5E7EB]">
-                    If you don't have test tokens right now, you can easily mint custom assets from our <span className="font-bold text-[#F2C12E]">Token Studio</span> to test LPs!
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setActivePage('studio')}
-                type="button"
-                className="shrink-0 rounded-xl bg-[#F2C12E] px-4 py-2 font-mono text-xs font-bold text-[#0D0D12] transition hover:bg-[#e0b429]"
-              >
-                Go to Token Studio →
-              </button>
-            </div>
-
             <DefiOperations
               balances={balances}
               onPositionAdded={handlePositionAdded}
@@ -282,12 +256,6 @@ function AppInner() {
               xlmBalance={xlmBalance}
             />
           </div>
-        ) : activePage === 'studio' ? (
-          <TokenStudioView />
-        ) : activePage === 'alerts' ? (
-          <AlertsView onSessionChange={refreshAlerts} positions={localPositions} />
-        ) : activePage === 'ramp' ? (
-          <RampView onBalancesChanged={refreshBalances} />
         ) : activePage === 'tester' ? (
           <ApiTesterView />
         ) : (
@@ -295,6 +263,9 @@ function AppInner() {
         )}
       </main>
 
+      {notificationPanel?.scope === notificationScope && (
+        <NotificationsPanel key={notificationScope} model={alertsModel} positions={localPositions} initialNotification={notificationPanel.notification} onClose={() => setNotificationPanel(null)} />
+      )}
       {showQuiz && (
         <RiskQuiz
           onComplete={(profile) => { setRiskProfile(profile); setShowQuiz(false) }}

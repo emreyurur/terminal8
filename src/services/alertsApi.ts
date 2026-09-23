@@ -67,7 +67,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}`, ...init.headers },
   })
   if (res.status === 401) {
-    clearStoredJwtToken()
+    if (getStoredJwtToken() === jwt) clearStoredJwtToken()
     throw new AlertsAuthError()
   }
   const text = await res.text()

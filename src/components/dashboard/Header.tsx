@@ -1,22 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
+import { Bell } from 'lucide-react'
 import eightLogo from '../../assets/eight.svg'
 import { truncatePublicKey } from '../../lib/format'
 import { useWallet } from '../../context/useWallet'
 import type { WalletErrorType } from '../../context/WalletContext'
 
 type HeaderProps = {
-  activePage: 'landing' | 'home' | 'studio' | 'ramp' | 'alerts' | 'docs' | 'tester'
-  onPageChange: (page: 'landing' | 'home' | 'studio' | 'ramp' | 'alerts' | 'docs' | 'tester') => void
+  activePage: 'landing' | 'home' | 'docs' | 'tester'
+  onPageChange: (page: 'landing' | 'home' | 'docs' | 'tester') => void
   onToggleTerminal?: () => void
-  /** Fired alerts not yet acknowledged, shown as a badge on the Alerts tab. */
+  onOpenNotifications: () => void
+  notificationsOpen: boolean
   unreadAlerts?: number
 }
 
-const NAV_LABELS: Record<'home' | 'studio' | 'ramp' | 'alerts' | 'docs', string> = {
+const NAV_LABELS: Record<'home' | 'docs', string> = {
   home: 'Home',
-  studio: 'Token Studio',
-  ramp: 'Ramp',
-  alerts: 'Alerts',
   docs: 'Docs',
 }
 
@@ -34,7 +33,7 @@ const ERROR_LABELS: Record<WalletErrorType, string> = {
   unknown: 'Connection Error',
 }
 
-export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlerts = 0 }: HeaderProps) {
+export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlerts = 0, onOpenNotifications, notificationsOpen }: HeaderProps) {
   const { connect, error, errorType, publicKey, reset, status } = useWallet()
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -93,8 +92,8 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
   }
 
   return (
-    <nav className="sticky start-0 top-0 z-50 w-full border-b border-white/[0.08] bg-[#0A0A0E]/90 backdrop-blur-md">
-      <div className="mx-auto flex max-w-screen-xl flex-wrap items-center justify-between p-4">
+    <nav className="sticky start-0 top-0 z-50 w-full border-b border-white/[0.06] bg-[#080B10]/95 backdrop-blur-xl">
+      <div className="mx-auto flex h-20 max-w-[1440px] flex-wrap items-center justify-between px-4 sm:px-6">
         <button
           className="group flex items-center space-x-3 text-left rtl:space-x-reverse"
           onClick={() => onPageChange('landing')}
@@ -103,7 +102,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
         >
           <span
             className="flex items-center gap-1.5 leading-none text-[#F0F0F0]"
-            style={{ fontFamily: "'Syne', sans-serif", fontSize: '22px', fontWeight: 800, letterSpacing: '-0.03em' }}
+            style={{ fontFamily: "'Syne', sans-serif", fontSize: '21px', fontWeight: 800, letterSpacing: 0 }}
           >
             <span>TERMINAL</span>
             <img
@@ -114,11 +113,16 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
           </span>
         </button>
 
-        <div className="flex items-center space-x-3 md:order-2 md:space-x-0 rtl:space-x-reverse">
+        <div className="flex items-center gap-2 md:order-2">
+          <button type="button" className="notification-trigger notification-icon relative border border-white/[0.08] bg-[#171B24] hover:bg-[#1C212C]" aria-label={unreadAlerts ? `Notifications, ${unreadAlerts} unread` : 'Notifications'} aria-haspopup="dialog" aria-expanded={notificationsOpen} onClick={() => { setAccountMenuOpen(false); setMobileMenuOpen(false); onOpenNotifications() }}>
+            <Bell size={20} strokeWidth={1.7} />
+            {unreadAlerts > 0 && <span className="absolute -right-1 -top-0.5 min-w-4 rounded-full bg-[#F2C12E] px-1 text-center text-[9px] font-bold leading-4 text-black">{unreadAlerts > 99 ? '99+' : unreadAlerts}</span>}
+            <span role="tooltip" className="notification-tooltip absolute right-0 top-full z-50 mt-2 rounded bg-zinc-800 px-2 py-1 text-xs text-white shadow-lg">Notifications</span>
+          </button>
           <div className="relative" ref={accountMenuRef}>
             <button
               aria-expanded={accountMenuOpen}
-              className="inline-flex min-w-27 items-center justify-center gap-2 rounded-xl border border-[#F2C12E]/50 bg-transparent px-4 py-2 text-xs font-semibold tracking-wide text-[#F0F0F0] transition hover:border-[#F2C12E] hover:text-[#F2C12E] focus:outline-none focus:ring-2 focus:ring-[#F2C12E]/60"
+              className="inline-flex h-10 min-w-27 items-center justify-center gap-2 rounded-md border border-white/[0.08] bg-[#171B24] px-4 text-sm font-medium text-[#F0F0F0] transition hover:border-[#F2C12E]/40 hover:bg-[#1C212C] focus:outline-none focus:ring-2 focus:ring-[#F2C12E]/50"
               disabled={status === 'CONNECTING'}
               onClick={handleWalletClick}
               type="button"
@@ -238,15 +242,15 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
           className={`${mobileMenuOpen ? 'block' : 'hidden'} w-full items-center justify-between md:order-1 md:flex md:w-auto`}
           id="navbar-sticky"
         >
-          <ul className="mt-4 flex flex-col rounded-xl border border-white/[0.08] bg-[#12121A] p-4 font-medium md:mt-0 md:flex-row md:items-center md:space-x-8 md:border-0 md:bg-transparent md:p-0 rtl:space-x-reverse">
-            {(['home', 'studio', 'ramp', 'alerts', 'docs'] as const).map((page) => (
+          <ul className="mt-4 flex flex-col rounded-lg border border-white/[0.08] bg-[#11151D] p-3 font-medium md:mt-0 md:flex-row md:items-center md:gap-1 md:border-0 md:bg-transparent md:p-0">
+            {(['home', 'docs'] as const).map((page) => (
               <li key={page}>
                 <button
                   aria-pressed={activePage === page}
-                  className={`block w-full rounded-lg px-3 py-2 text-left text-sm tracking-wide transition md:p-0 ${
+                  className={`block h-10 w-full rounded-lg px-4 text-left text-sm transition md:w-auto ${
                     activePage === page
-                      ? 'font-semibold text-[#F2C12E]'
-                      : 'font-medium text-[#9CA3AF] hover:bg-white/[0.06] hover:text-[#F2C12E] md:hover:bg-transparent'
+                      ? 'bg-[#F2C12E]/10 font-medium text-[#F2C12E]'
+                      : 'font-normal text-[#9CA3AF] hover:bg-white/[0.04] hover:text-white'
                   }`}
                   onClick={() => {
                     onPageChange(page)
@@ -255,17 +259,12 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
                   type="button"
                 >
                   {NAV_LABELS[page]}
-                  {page === 'alerts' && unreadAlerts > 0 && (
-                    <span className="ml-1.5 rounded-full bg-[#F2C12E] px-1.5 py-0.5 text-[10px] font-bold text-[#0D0D12]">
-                      {unreadAlerts}
-                    </span>
-                  )}
                 </button>
               </li>
             ))}
             <li>
               <button
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium tracking-wide text-[#9CA3AF] transition hover:bg-white/[0.06] hover:text-[#F2C12E] md:p-0 md:hover:bg-transparent"
+                className="flex h-10 w-full items-center gap-2 rounded-lg px-4 text-left text-sm font-normal text-[#9CA3AF] transition hover:bg-white/[0.04] hover:text-white md:w-auto"
                 onClick={() => {
                   onToggleTerminal?.()
                   setMobileMenuOpen(false)

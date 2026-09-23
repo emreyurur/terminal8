@@ -1,5 +1,5 @@
 import { API_BASE, clearStoredJwtToken, getStoredJwtToken, loginWithFreighterFlow, submitToHorizon } from './terminal8Api'
-import { signToString, type SignFn } from './rampApi'
+import { signToString, type FreighterSignFn } from './terminal8Api'
 
 export type SingleAssetPlan = {
   sourceAsset: string
@@ -56,7 +56,7 @@ async function requestBuild(params: SingleAssetParams, jwt: string): Promise<Res
  */
 export async function previewSingleAssetDeposit(
   publicKey: string,
-  sign: SignFn,
+  sign: FreighterSignFn,
   params: SingleAssetParams,
 ): Promise<SingleAssetBuild> {
   let jwt = getStoredJwtToken() ?? (await loginWithFreighterFlow(publicKey, sign))
@@ -74,7 +74,7 @@ export async function previewSingleAssetDeposit(
 /** Signs the prepared transaction and submits it. One signature covers trustlines, swap, and deposit. */
 export async function submitSingleAssetDeposit(
   publicKey: string,
-  sign: SignFn,
+  sign: FreighterSignFn,
   built: SingleAssetBuild,
   poolId: string,
 ): Promise<{ hash: string }> {

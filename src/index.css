@@ -9,7 +9,7 @@ html {
     "Segoe UI", sans-serif;
   font-family: var(--font-display);
   color: #F0F0F0;
-  background: #0A0A0E;
+  background: #080B10;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -25,16 +25,36 @@ body {
   min-width: 320px;
   min-height: 100vh;
   font-family: var(--font-display);
-  background: #0A0A0E;
+  background: #080B10;
   color: #F0F0F0;
   overflow-y: scroll;
   scrollbar-gutter: stable;
 }
 
-*,
 button,
 input {
-  font: inherit;
+  font-family: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
+}
+
+.terminal8-product-ui .rounded-2xl {
+  border-radius: 12px;
+}
+
+.terminal8-product-ui .rounded-xl {
+  border-radius: 8px;
+}
+
+.terminal8-product-ui .font-bold,
+.terminal8-product-ui .font-extrabold,
+.terminal8-product-ui .font-black {
+  font-weight: 600;
 }
 
 /* Remove up/down spinner arrows from number inputs */

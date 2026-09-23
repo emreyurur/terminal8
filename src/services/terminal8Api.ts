@@ -114,14 +114,29 @@ export type FreighterSignFn = (
   opts: { networkPassphrase: string; accountToSign?: string },
 ) => Promise<string | { signedTxXdr: string }>
 
-async function normalizeSignedXdr(
+export async function signToString(
   signFn: FreighterSignFn,
   xdr: string,
   networkPassphrase: string,
   accountToSign?: string,
 ): Promise<string> {
   const res = await signFn(xdr, { networkPassphrase, accountToSign })
-  return typeof res === 'string' ? res : res.signedTxXdr
+  const signed = typeof res === 'string' ? res : res.signedTxXdr
+  if (!signed) {
+    const reason = (res as { error?: { message?: string } | string }).error
+    const detail = typeof reason === 'string' ? reason : reason?.message
+    throw new Error(`Wallet did not sign the transaction${detail ? `: ${detail}` : ' (rejected or site not authorized)'}`)
+  }
+  return signed
+}
+
+async function normalizeSignedXdr(
+  signFn: FreighterSignFn,
+  xdr: string,
+  networkPassphrase: string,
+  accountToSign?: string,
+): Promise<string> {
+  return signToString(signFn, xdr, networkPassphrase, accountToSign)
 }
 
 /**
