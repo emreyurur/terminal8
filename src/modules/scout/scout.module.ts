@@ -8,7 +8,6 @@ import { HorizonClient } from "./horizon/horizon.client";
 import { ScoutService } from "./scout.service";
 import { ScoutProcessor } from "./scout.processor";
 import { ScoutController } from "./scout.controller";
-import { PricingService } from "./pricing.service";
 import { appConfig } from "../../config/app.config";
 import { ConfigType } from "@nestjs/config";
 import { Inject } from "@nestjs/common";
@@ -21,8 +20,8 @@ import { Inject } from "@nestjs/common";
     }),
   ],
   controllers: [ScoutController],
-  providers: [HorizonClient, ScoutService, ScoutProcessor, PricingService],
-  exports: [ScoutService, HorizonClient, PricingService],
+  providers: [HorizonClient, ScoutService, ScoutProcessor],
+  exports: [ScoutService, HorizonClient],
 })
 export class ScoutModule implements OnModuleInit {
   constructor(

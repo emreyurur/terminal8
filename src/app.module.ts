@@ -11,6 +11,7 @@ import { TestnetToolsModule } from "./modules/testnet-tools/testnet-tools.module
 import { HistoryModule } from "./modules/history/history.module";
 import { AnchorModule } from "./modules/anchor/anchor.module";
 import { AlertsModule } from "./modules/alerts/alerts.module";
+import { OracleModule } from "./modules/oracle/oracle.module";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AlertsModule } from "./modules/alerts/alerts.module";
     HistoryModule,
     AnchorModule,
     AlertsModule,
+    OracleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

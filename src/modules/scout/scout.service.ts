@@ -6,7 +6,7 @@ import { PoolSnapshot } from "./entities/pool-snapshot.entity";
 import { HorizonClient } from "./horizon/horizon.client";
 import { HorizonPoolResponse } from "./horizon/horizon.types";
 import { RedisService } from "../../core/redis/redis.service";
-import { PricingService } from "./pricing.service";
+import { OracleService } from "../oracle/oracle.service";
 import { CACHE_KEYS } from "../../shared/constants";
 
 @Injectable()
@@ -20,7 +20,7 @@ export class ScoutService {
     private readonly snapshotRepository: Repository<PoolSnapshot>,
     private readonly horizonClient: HorizonClient,
     private readonly redisService: RedisService,
-    private readonly pricingService: PricingService,
+    private readonly oracleService: OracleService,
   ) { }
 
   async syncLiquidityPools() {
@@ -118,15 +118,15 @@ export class ScoutService {
           }
         }
 
-        // PricingService kullanarak gerçek USD fiyatlarını çekiyoruz
-        const priceAUsd = await this.pricingService.getAssetUsdPrice(
+        // OracleService kullanarak gerçek USD fiyatlarını çekiyoruz
+        const priceAUsd = (await this.oracleService.getUsdPrice(
           pool.assetACode,
           pool.assetAIssuer,
-        );
-        const priceBUsd = await this.pricingService.getAssetUsdPrice(
+        )) || 0;
+        const priceBUsd = (await this.oracleService.getUsdPrice(
           pool.assetBCode,
           pool.assetBIssuer,
-        );
+        )) || 0;
 
         const tvlUsd =
           parseFloat(pool.reserveA) * priceAUsd +
@@ -302,7 +302,7 @@ export class ScoutService {
     return {
       vaultOverview: {
         totalSupplied: totalSupplied,
-        totalBorrowed: 0, // Placeholder
+        totalBorrowed: 0,
         utilization: utilization,
         supplyApy: supplyApy,
         supplyApy90dAvg: avg90dApy,

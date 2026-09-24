@@ -5,10 +5,12 @@ export class ApyCalculator {
   calculate(
     volume24hUsd: number,
     tvlUsd: number,
+    feeBp: number = 30, // Default to 0.3% if not provided
   ): { apy: number; score: number } {
     if (tvlUsd <= 0) return { apy: 0, score: 0 };
 
-    const dailyFeeIncome = volume24hUsd * 0.003; // 0.3% fee
+    const feeDecimal = feeBp / 10000;
+    const dailyFeeIncome = volume24hUsd * feeDecimal;
     const dailyYield = dailyFeeIncome / tvlUsd;
 
     // (1 + dailyYield)^365 - 1

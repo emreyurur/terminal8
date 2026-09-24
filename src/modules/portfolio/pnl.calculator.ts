@@ -1,10 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { UserPosition } from "./entities/user-position.entity";
 import { LiquidityPool } from "../scout/entities/liquidity-pool.entity";
+import { OracleService } from "../oracle/oracle.service";
 
 @Injectable()
 export class PnlCalculator {
-  calculatePositionMetrics(position: UserPosition, pool: LiquidityPool) {
+  constructor(private readonly oracleService: OracleService) {}
+
+  async calculatePositionMetrics(position: UserPosition, pool: LiquidityPool) {
     const sharesOwned = parseFloat(position.sharesOwned);
     const totalShares = parseFloat(pool.totalShares);
 
@@ -18,10 +21,19 @@ export class PnlCalculator {
     const currentA = parseFloat(pool.reserveA) * shareRatio;
     const currentB = parseFloat(pool.reserveB) * shareRatio;
 
-    // For full accuracy, we'd need exact current USD prices of A and B.
-    // Using a placeholder of $0.1 for demo purposes.
-    const priceAUsd = 0.1;
-    const priceBUsd = 0.1;
+    // Current USD prices of A and B from Oracle (or internal pool ratio if oracle fails)
+    let priceAUsd = await this.oracleService.getUsdPrice(pool.assetACode, pool.assetAIssuer);
+    let priceBUsd = await this.oracleService.getUsdPrice(pool.assetBCode, pool.assetBIssuer);
+
+    if (!priceAUsd && priceBUsd) {
+      // internal price ratio
+      priceAUsd = (parseFloat(pool.reserveB) * priceBUsd) / parseFloat(pool.reserveA);
+    } else if (!priceBUsd && priceAUsd) {
+      priceBUsd = (parseFloat(pool.reserveA) * priceAUsd) / parseFloat(pool.reserveB);
+    } else if (!priceAUsd && !priceBUsd) {
+      priceAUsd = 0;
+      priceBUsd = 0;
+    }
 
     const currentValueUsd = currentA * priceAUsd + currentB * priceBUsd;
 

@@ -11,6 +11,7 @@ import { ApyCalculator } from "./scorers/apy.calculator";
 import { ScoutService } from "../scout/scout.service";
 import { PoolSnapshot } from "../scout/entities/pool-snapshot.entity";
 import { RISK_LEVELS } from "../../shared/constants";
+import { OracleService } from "../oracle/oracle.service";
 
 @Injectable()
 export class RiskService {
@@ -27,6 +28,7 @@ export class RiskService {
     private readonly tvlScorer: TvlScorer,
     private readonly volatilityScorer: VolatilityScorer,
     private readonly apyCalculator: ApyCalculator,
+    private readonly oracleService: OracleService,
   ) {}
 
   async calculatePoolRisk(poolId: string): Promise<RiskScore> {
@@ -52,12 +54,25 @@ export class RiskService {
         ? parseFloat(latestSnapshot.volume24hUsd)
         : 0;
     } else {
-      // Snapshot yoksa reserve'lerden kaba tahmin (1 birim = 0.1 USD placeholder)
+      // Snapshot yoksa veya tvlUsd hesaplanmamışsa reserve'lerden ve oracle'dan tahmin et
       const reserveA = parseFloat(pool.reserveA) || 0;
       const reserveB = parseFloat(pool.reserveB) || 0;
-      tvlUsd = (reserveA + reserveB) * 0.1;
+      
+      const priceA = await this.oracleService.getUsdPrice(pool.assetACode, pool.assetAIssuer);
+      const priceB = await this.oracleService.getUsdPrice(pool.assetBCode, pool.assetBIssuer);
+
+      if (priceA && priceB) {
+        tvlUsd = reserveA * priceA + reserveB * priceB;
+      } else if (priceA) {
+        // Assume symmetric pool (50/50 value)
+        tvlUsd = reserveA * priceA * 2;
+      } else if (priceB) {
+        tvlUsd = reserveB * priceB * 2;
+      } else {
+        tvlUsd = 0; // Eğer Oracle'da fiyat yoksa TVL hesaplanamaz
+      }
+
       volume24hUsd = 0;
-      //this.logger.debug(`No snapshot for pool ${poolId}, estimated TVL from reserves: $${tvlUsd.toFixed(2)}`);
     }
 
     const trustScore = await this.trustScorer.score(pool);
@@ -66,6 +81,7 @@ export class RiskService {
     const { apy, score: apyScore } = this.apyCalculator.calculate(
       volume24hUsd,
       tvlUsd,
+      pool.feeBp,
     );
 
     const weights = this.config.riskWeights;

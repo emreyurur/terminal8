@@ -8,6 +8,9 @@ import { ScoutService } from "../scout/scout.service";
 import { HorizonClient } from "../scout/horizon/horizon.client";
 import { Logger, Inject, forwardRef } from "@nestjs/common";
 import { HistoryService } from "../history/history.service";
+import { OracleService } from "../oracle/oracle.service";
+import { OracleAsset } from "../oracle/oracle.types";
+import { RiskService } from "../risk/risk.service";
 
 @Injectable()
 export class PortfolioService {
@@ -20,6 +23,9 @@ export class PortfolioService {
     private readonly scoutService: ScoutService,
     private readonly horizonClient: HorizonClient,
     private readonly historyService: HistoryService,
+    private readonly oracleService: OracleService,
+    @Inject(forwardRef(() => RiskService))
+    private readonly riskService: RiskService,
   ) {}
 
   async getPortfolio(publicKey: string): Promise<PortfolioResponseDto> {
@@ -39,7 +45,7 @@ export class PortfolioService {
       const pool = await this.scoutService.getPool(position.poolId);
       if (!pool) continue;
 
-      const metrics = this.pnlCalculator.calculatePositionMetrics(
+      const metrics = await this.pnlCalculator.calculatePositionMetrics(
         position,
         pool,
       );
@@ -174,13 +180,28 @@ export class PortfolioService {
     const allPools = await this.scoutService.getPools(1, 1000);
     let marketSizeUsd = 0;
 
-    // Instead of querying all pools via scoutService if it's heavy, we can do a rough estimate or
-    // fetch snapshot TVLs. Let's assume we can fetch them.
+    // Gather all unique assets across pools to batch fetch prices
+    const oracleAssetsMap = new Map<string, OracleAsset>();
     for (const pool of allPools.data || []) {
-      // Very basic TVL estimation if we don't have snapshots loaded here
+      oracleAssetsMap.set(`${pool.assetACode}:${pool.assetAIssuer || 'native'}`, { code: pool.assetACode, issuer: pool.assetAIssuer });
+      oracleAssetsMap.set(`${pool.assetBCode}:${pool.assetBIssuer || 'native'}`, { code: pool.assetBCode, issuer: pool.assetBIssuer });
+    }
+    const prices = await this.oracleService.getBatchUsdPrices(Array.from(oracleAssetsMap.values()));
+
+    for (const pool of allPools.data || []) {
       const reserveA = parseFloat(pool.reserveA) || 0;
       const reserveB = parseFloat(pool.reserveB) || 0;
-      marketSizeUsd += (reserveA + reserveB) * 0.1; // Using the same dummy pricing logic as risk service for now
+      
+      const priceA = prices.get(pool.assetACode) || 0;
+      const priceB = prices.get(pool.assetBCode) || 0;
+      
+      if (priceA > 0 && priceB > 0) {
+        marketSizeUsd += reserveA * priceA + reserveB * priceB;
+      } else if (priceA > 0) {
+        marketSizeUsd += reserveA * priceA * 2;
+      } else if (priceB > 0) {
+        marketSizeUsd += reserveB * priceB * 2;
+      }
     }
 
     await this.syncBlockchainBalances(publicKey);
@@ -199,7 +220,7 @@ export class PortfolioService {
       const pool = await this.scoutService.getPool(position.poolId);
       if (!pool) continue;
 
-      const metrics = this.pnlCalculator.calculatePositionMetrics(
+      const metrics = await this.pnlCalculator.calculatePositionMetrics(
         position,
         pool,
       );
@@ -207,14 +228,16 @@ export class PortfolioService {
       vaultDepositsUsd += metrics.currentValueUsd;
       totalPnlUsd += metrics.pnlUsd;
 
-      // In Option 1, we map AMM data to Lending UI fields
+      const riskData = await this.riskService.getRiskByPoolId(pool.id);
+
       assets.push({
         poolId: position.poolId,
         assetName: `${pool.assetACode}-${pool.assetBCode} LP`,
         positionValueUsd: metrics.currentValueUsd,
-        supplyApy: metrics.impermanentLossPct, // Showing IL% as the "APY" stat for the UI
+        supplyApy: riskData?.estimatedApy || 0,
+        impermanentLossPct: metrics.impermanentLossPct,
         interestEarnedUsd: metrics.pnlUsd, // Showing PnL as "Interest Earned"
-        vaultProfile: "Dynamic", // We can fetch from RiskService in a full implementation
+        vaultProfile: riskData?.riskLevel || "Dynamic",
       });
     }
 

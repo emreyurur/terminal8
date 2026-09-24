@@ -35,4 +35,10 @@ export const appConfig = registerAs("app", () => ({
 
   jwtSecret: process.env.JWT_SECRET || "fallback-secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
+
+  reflectorContractId: process.env.REFLECTOR_CONTRACT_ID || "CAVLP5DH2GJPZMVO7IJY4CVOD5MWEFTJFVPD2YY2FQXOQHRGHK4D6HLP",
+  sorobanRpcUrl: process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org:443",
+  oracleCacheTtl: parseInt(process.env.ORACLE_CACHE_TTL || "60", 10),
+  oracleStaleTtl: parseInt(process.env.ORACLE_STALE_TTL || "300", 10),
+  oracleStalenessLimit: parseInt(process.env.ORACLE_STALENESS_LIMIT || "3600", 10),
 }));
