@@ -1,7 +1,38 @@
 export type WalletErrorType = 'wallet_not_found' | 'user_rejected' | 'insufficient_balance' | 'unknown'
 
+function getWalletErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>
+    if (typeof value.message === 'string') return value.message
+    if (typeof value.reason === 'string') return value.reason
+    if (typeof value.error === 'string') return value.error
+  }
+
+  return ''
+}
+
+export function isWalletCancellationError(error: unknown): boolean {
+  const lower = getWalletErrorMessage(error).toLowerCase()
+
+  return [
+    'rejected',
+    'declined',
+    'cancelled',
+    'canceled',
+    'user closed',
+    'user denied',
+    'modal closed',
+    'closed the modal',
+    'window closed',
+    'closed by user',
+  ].some((phrase) => lower.includes(phrase))
+}
+
 export function classifyWalletError(error: unknown): { type: WalletErrorType; message: string } {
-  const msg = error instanceof Error ? error.message : String(error)
+  const msg = getWalletErrorMessage(error)
   const lower = msg.toLowerCase()
 
   if (
@@ -19,21 +50,13 @@ export function classifyWalletError(error: unknown): { type: WalletErrorType; me
   }
 
   if (
-    lower.includes('rejected') ||
-    lower.includes('declined') ||
-    lower.includes('cancelled') ||
-    lower.includes('canceled') ||
-    lower.includes('user closed') ||
-    lower.includes('user denied') ||
-    lower.includes('modal closed') ||
+    isWalletCancellationError(error) ||
     lower.includes('connection error') ||
-    lower.includes('window closed') ||
-    lower.includes('closed by user') ||
     lower === 'connection error'
   ) {
     return {
       type: 'user_rejected',
-      message: 'User cancelled connection. Wallet selection dialog or popup was closed.',
+      message: 'User rejected or cancelled the connection request.',
     }
   }
 

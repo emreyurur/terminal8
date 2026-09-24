@@ -6,7 +6,7 @@ import { AlbedoModule } from '@creit.tech/stellar-wallets-kit/modules/albedo'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { WalletStatus } from '../types/stellar'
 import { WalletContext } from './walletContextValue'
-import { classifyWalletError } from '../lib/walletErrors'
+import { classifyWalletError, isWalletCancellationError } from '../lib/walletErrors'
 
 export type { WalletErrorType } from '../lib/walletErrors'
 
@@ -109,6 +109,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         networkUrl: resolvedNetworkUrl,
       })
     } catch (reason) {
+      if (isWalletCancellationError(reason)) {
+        setStatus('DISCONNECTED')
+        setError(null)
+        setErrorType(null)
+        return
+      }
+
       const { type, message } = classifyWalletError(reason)
       setPublicKey(null)
       setNetwork(null)
