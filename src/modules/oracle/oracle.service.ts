@@ -204,7 +204,7 @@ export class OracleService implements OnModuleInit {
     const priceData = await this.redis.get<PriceData>(cacheKey);
 
     if (!priceData) {
-      this.logger.debug(
+      this.logger.verbose(
         `No cached price for ${assetCode}. Returning null.`,
       );
       return null;
@@ -247,7 +247,7 @@ export class OracleService implements OnModuleInit {
   async getSupportedAssets(): Promise<OracleAsset[]> {
     return [
       { code: "XLM", issuer: null },
-      { code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWTTCJM4RTQR6EPCEVK2T11FE2KUUSZCQVCO" }, // testnet
+      { code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" }, // testnet
     ];
   }
 

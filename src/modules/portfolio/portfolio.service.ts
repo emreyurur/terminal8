@@ -237,7 +237,7 @@ export class PortfolioService {
         poolId: position.poolId,
         assetName: `${pool.assetACode}-${pool.assetBCode} LP`,
         positionValueUsd: metrics.currentValueUsd,
-        supplyApy: riskData?.estimatedApy || 0,
+        supplyApy: (riskData?.estimatedApy || 0) * 100,
         impermanentLossPct: metrics.impermanentLossPct,
         interestEarnedUsd: metrics.pnlUsd, // Showing PnL as "Interest Earned"
         vaultProfile: riskData?.riskLevel || "Dynamic",
