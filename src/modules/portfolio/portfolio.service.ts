@@ -41,6 +41,8 @@ export class PortfolioService {
     const positionDtos = [];
 
     for (const position of positions) {
+      if (parseFloat(position.sharesOwned) === 0) continue;
+
       const pool = await this.scoutService.getPool(position.poolId);
       if (!pool) continue;
 
@@ -216,6 +218,8 @@ export class PortfolioService {
     const assets = [];
 
     for (const position of positions) {
+      if (parseFloat(position.sharesOwned) === 0) continue;
+
       const pool = await this.scoutService.getPool(position.poolId);
       if (!pool) continue;
 
