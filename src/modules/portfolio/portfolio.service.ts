@@ -24,7 +24,6 @@ export class PortfolioService {
     private readonly horizonClient: HorizonClient,
     private readonly historyService: HistoryService,
     private readonly oracleService: OracleService,
-    @Inject(forwardRef(() => RiskService))
     private readonly riskService: RiskService,
   ) {}
 

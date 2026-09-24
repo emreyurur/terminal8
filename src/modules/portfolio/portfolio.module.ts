@@ -7,12 +7,14 @@ import { PortfolioController } from "./portfolio.controller";
 import { PnlCalculator } from "./pnl.calculator";
 import { ScoutModule } from "../scout/scout.module";
 import { HistoryModule } from "../history/history.module";
+import { RiskModule } from "../risk/risk.module";
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([UserPosition, PositionSnapshot]),
     ScoutModule,
     HistoryModule,
+    RiskModule,
   ],
   controllers: [PortfolioController],
   providers: [PortfolioService, PnlCalculator],
