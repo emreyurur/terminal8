@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, Bell, CheckCheck, ChevronRight, Inbox, MoreHorizontal, Pause, Play, Plus, RefreshCw, Settings2, ShieldCheck, X } from 'lucide-react'
+import { ArrowLeft, Bell, Check, CheckCheck, ChevronRight, Copy, Inbox, LoaderCircle, MoreHorizontal, Pause, Play, Plus, RefreshCw, Settings2, X } from 'lucide-react'
 import { useWallet } from '../../context/useWallet'
 import xlmLogo from '../../assets/xlm.svg'
 import type { AlertsModel } from '../../hooks/useAlertNotifications'
@@ -16,6 +16,7 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
 }) {
   const { publicKey, status, networkPassphrase, connect } = useWallet()
   const connected = status === 'CONNECTED' && !!publicKey
+  const signIn = model.signIn
   const dialog = useRef<HTMLDialogElement>(null)
   const [view, setView] = useState<View>(initialNotification ? 'detail' : 'inbox')
   const [selected, setSelected] = useState<AlertNotification | undefined>(initialNotification)
@@ -26,7 +27,9 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [permission, setPermission] = useState(notificationPermission)
+  const [addressCopied, setAddressCopied] = useState(false)
   const initialRef = useRef(initialNotification)
+  const autoSignInAttempted = useRef(false)
   const markReadRef = useRef(model.markRead)
   const refreshRef = useRef(model.refresh)
   useLayoutEffect(() => {
@@ -55,6 +58,15 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
     window.addEventListener('focus', sync)
     return () => window.removeEventListener('focus', sync)
   }, [])
+  useEffect(() => {
+    if (!connected || model.signedIn || autoSignInAttempted.current) return
+    autoSignInAttempted.current = true
+    setBusy(true)
+    setError('')
+    void signIn()
+      .catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to authorize alerts'))
+      .finally(() => setBusy(false))
+  }, [connected, model.signedIn, signIn])
   const navigate = (action: () => void) => {
     if (busy) return
     if (dirty) setPending({ action })
@@ -69,8 +81,19 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
   const items = model.notifications.filter(n => !unreadOnly || !n.readAt)
   const related = model.alerts.find(a => a.id === selected?.alertId)
   const root = view === 'inbox' || view === 'alerts'
+  const formView = view === 'create' || view === 'edit'
   const title = view === 'settings' ? 'Notification settings' : view === 'create' ? 'Create alert' : view === 'edit' ? 'Edit alert' : view === 'detail' ? 'Alert details' : 'Notifications'
   const back = () => navigate(() => setView(view === 'create' || view === 'edit' ? 'alerts' : 'inbox'))
+  const copyAddress = async () => {
+    if (!publicKey) return
+    try {
+      await navigator.clipboard.writeText(publicKey)
+      setAddressCopied(true)
+      window.setTimeout(() => setAddressCopied(false), 1600)
+    } catch {
+      setError('Unable to copy wallet address')
+    }
+  }
 
   return (
     <dialog ref={dialog} className="notification-panel" aria-labelledby="notifications-title" onCancel={e => { e.preventDefault(); navigate(onClose) }} onClick={e => { if (e.target === e.currentTarget) navigate(onClose) }}>
@@ -86,6 +109,7 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
             <img alt="" aria-hidden="true" className="size-4 shrink-0 rounded-full" src={xlmLogo} />
             <span>{networkPassphrase?.includes('Test') ? 'Stellar Testnet' : networkPassphrase?.includes('Public') ? 'Stellar Mainnet' : 'Stellar network'}</span>
             <span className="font-mono">{connected ? `${publicKey.slice(0, 5)}...${publicKey.slice(-5)}` : 'Wallet not connected'}</span>
+            {connected && <button type="button" className="inline-flex size-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-white" aria-label={addressCopied ? 'Wallet address copied' : 'Copy wallet address'} title={addressCopied ? 'Copied' : 'Copy wallet address'} onClick={() => void copyAddress()}>{addressCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}</button>}
           </div>
         </header>
         {pending && <div role="alert" className="border-b border-yellow-400/20 bg-yellow-400/10 p-4 text-sm">
@@ -98,8 +122,8 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
           <button role="tab" id="inbox-tab" aria-controls="notification-content" aria-selected={view === 'inbox'} className="notification-tab" onClick={() => setView('inbox')}>Inbox {model.unreadCount > 0 && <span className="ml-2 text-xs text-[#F2C12E]">{model.unreadCount}</span>}</button>
           <button role="tab" id="alerts-tab" aria-controls="notification-content" aria-selected={view === 'alerts'} className="notification-tab" onClick={() => setView('alerts')}>My alerts <span className="ml-2 text-xs text-zinc-500">{model.alerts.length}</span></button>
         </div>}
-        <div id="notification-content" role={root ? 'tabpanel' : undefined} aria-labelledby={root ? `${view === 'inbox' ? 'inbox' : 'alerts'}-tab` : undefined} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-          {(error || model.error) && <div role="alert" className="mb-4 rounded-lg bg-red-400/10 p-3 text-sm text-red-300"><p className="break-words">{error || model.error}</p><button className="mt-2 underline" onClick={() => void run(model.refresh)}>Retry</button></div>}
+        <div id="notification-content" role={root ? 'tabpanel' : undefined} aria-labelledby={root ? `${view === 'inbox' ? 'inbox' : 'alerts'}-tab` : undefined} className={`min-h-0 flex-1 overscroll-contain ${formView ? 'flex flex-col overflow-hidden' : 'overflow-y-auto px-5 py-5'}`}>
+          {(error || model.error) && <div role="alert" className={`${formView ? 'mx-5 mt-5' : 'mb-4'} rounded-lg bg-red-400/10 p-3 text-sm text-red-300`}><p className="break-words">{error || model.error}</p><button className="mt-2 underline" onClick={() => void run(model.refresh)}>Retry</button></div>}
           {view === 'settings' ? <div className="space-y-6">
             <section className="space-y-3 border-b border-white/10 pb-6">
               <h3 className="text-sm font-medium">Browser notifications</h3>
@@ -110,7 +134,7 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
             </section>
             <section className="space-y-3"><h3 className="text-sm font-medium">Email delivery</h3><p className="text-xs text-zinc-400">{!model.signedIn ? 'Sign in to check availability.' : model.config?.emailEnabled ? 'Available. Email recipients are saved per alert.' : 'Currently unavailable.'}</p></section>
           </div> : !connected ? <div className="notification-empty"><Bell size={28} /><h3>Connect your wallet</h3><button className="notification-primary" disabled={status === 'CONNECTING'} onClick={() => void run(connect)}>{status === 'CONNECTING' ? 'Connecting...' : 'Connect wallet'}</button></div>
-          : !model.signedIn ? <div className="notification-empty"><ShieldCheck size={28} /><h3>Your wallet. Your alerts.</h3><p>Verify your wallet to access notifications.</p><button className="notification-primary" disabled={busy} onClick={() => void run(model.signIn)}>{busy ? 'Waiting for wallet...' : 'Sign in with wallet'}</button></div>
+          : !model.signedIn ? <div className="notification-empty"><LoaderCircle size={28} className={busy ? 'animate-spin' : ''} /><h3>{busy ? 'Opening your alerts' : 'Alert access needs approval'}</h3><p>{busy ? 'Using your connected wallet.' : 'Approve the signature request to continue. Your wallet stays connected.'}</p>{!busy && <button className="notification-primary" onClick={() => { autoSignInAttempted.current = true; void run(model.signIn) }}>Retry authorization</button>}</div>
           : model.loading && !model.config ? <div role="status" className="space-y-4 animate-pulse"><p className="text-sm text-zinc-400">Loading notifications...</p>{[1, 2, 3].map(i => <div key={i} className="h-16 rounded bg-white/5" />)}</div>
           : view === 'create' || view === 'edit' ? <AlertForm key={editing?.id ?? 'new'} alert={view === 'edit' ? editing : undefined} positions={positions} emailEnabled={model.config?.emailEnabled ?? false} onDirty={setDirty} onPending={setBusy} onSaved={async () => { await model.refresh(); setView('alerts'); setEditing(undefined) }} />
           : view === 'inbox' ? <>

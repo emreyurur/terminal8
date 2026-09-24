@@ -193,29 +193,42 @@ function findMatchingPool(pos: LocalPosition, allKnownPools: DeFiPool[], fallbac
 
 export function DefiOperations({
   balances,
+  onDetailRouteChange,
   onPositionAdded,
   onRetakeQuiz,
   onWithdrawn,
   positions,
   riskProfile,
+  routeDetailTab,
+  routePoolId,
   usdcBalance,
   xlmBalance,
 }: {
   balances?: WalletBalance[]
+  onDetailRouteChange: (poolId: string | null, detailTab: 'overview' | 'position') => void
   onPositionAdded: (pos: Omit<LocalPosition, 'id'>) => void
   onRetakeQuiz: () => void
   onWithdrawn: (id: string, amount: number) => void
   positions: LocalPosition[]
   riskProfile: RiskProfile | null
+  routeDetailTab: 'overview' | 'position'
+  routePoolId: string | null
   usdcBalance: number
   xlmBalance: number
 }) {
   void onRetakeQuiz
-  const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null)
-  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null)
-  const [detailTab, setDetailTab] = useState<'overview' | 'position'>('overview')
+  const selectedPoolId = routePoolId
+  const detailTab = routeDetailTab
   const [filterTab, setFilterTab] = useState<'all' | 'stables' | 'xlm'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+
+  const openPoolDetails = (poolId: string, tab: 'overview' | 'position') => {
+    onDetailRouteChange(poolId, tab)
+  }
+
+  const closePoolDetails = () => {
+    onDetailRouteChange(null, 'overview')
+  }
 
   const { publicKey } = useWallet()
   const portfolioState = usePortfolioDashboard(publicKey)
@@ -243,7 +256,7 @@ export function DefiOperations({
         id: `api_pos_${idx}_${pId || assetStr}`,
         poolId: pId,
         asset: assetStr,
-        amount: Number(apiP.amount ?? apiP.shares ?? apiP.balance ?? 0),
+        amount: Number(apiP.amount ?? apiP.sharesOwned ?? apiP.shares ?? apiP.balance ?? 0),
         apy: Number(apiP.apy ?? apiP.estimatedApy ?? 12.5),
         openedAt: Number(apiP.timestamp ?? apiP.openedAt ?? 1720000000000),
         hash: String(apiP.hash ?? apiP.txHash ?? `api_hash_${idx}`),
@@ -251,11 +264,22 @@ export function DefiOperations({
         status: String(apiP.status ?? 'SUCCESS'),
         timestamp: String(apiP.date ?? '12:00:00 AM'),
         category: (apiP.category as LocalPosition['category']) || 'AMM LP',
+        currentValueUsd: Number(apiP.currentValueUsd ?? apiP.valueUsd ?? 0),
+        pnlUsd: Number(apiP.pnlUsd ?? 0),
+        sharesOwned: Number(apiP.sharesOwned ?? apiP.shares ?? 0),
       }
     })
     const combined = [...positions]
     for (const p of mappedApi) {
-      if (p.poolId && !combined.some((c) => Boolean(c.poolId) && c.poolId === p.poolId)) {
+      const existingIndex = combined.findIndex((candidate) => Boolean(candidate.poolId) && candidate.poolId === p.poolId)
+      if (existingIndex >= 0) {
+        combined[existingIndex] = {
+          ...combined[existingIndex],
+          currentValueUsd: p.currentValueUsd,
+          pnlUsd: p.pnlUsd,
+          sharesOwned: p.sharesOwned,
+        }
+      } else if (p.poolId) {
         combined.push(p)
       }
     }
@@ -318,18 +342,13 @@ export function DefiOperations({
   if (selectedPool) {
     return (
       <SafeErrorBoundary
-        onReset={() => {
-          setSelectedPoolId(null)
-          setSelectedPositionId(null)
-        }}
+        onReset={closePoolDetails}
       >
         <PoolDetailsView
           available={getAvailableBalance(selectedPool.asset)}
           initialTab={detailTab}
-          onBack={() => {
-            setSelectedPoolId(null)
-            setSelectedPositionId(null)
-          }}
+          onBack={closePoolDetails}
+          onTabChange={(tab) => openPoolDetails(selectedPool.id, tab)}
           onPositionAdded={(pos) => {
             onPositionAdded(pos)
           }}
@@ -337,11 +356,7 @@ export function DefiOperations({
             onWithdrawn(id, amount)
           }}
           pool={selectedPool}
-          userPositions={
-            selectedPositionId
-              ? displayPositions.filter((p) => p.id === selectedPositionId)
-              : displayPositions.filter((p) => Boolean(p.poolId) && (p.poolId === selectedPool.id || (selectedPool.contractId && p.poolId === selectedPool.contractId)))
-          }
+          userPositions={displayPositions.filter((p) => Boolean(p.poolId) && (p.poolId === selectedPool.id || (selectedPool.contractId && p.poolId === selectedPool.contractId)))}
         />
       </SafeErrorBoundary>
     )
@@ -426,9 +441,7 @@ export function DefiOperations({
                       ? `${matchingPool.asset} / ${matchingPool.secondaryAsset}`
                       : pos.asset === 'XLM' ? 'XLM / USDC' : `${pos.asset} / XLM`
                     const openPosition = () => {
-                      setSelectedPositionId(pos.id)
-                      setDetailTab('position')
-                      setSelectedPoolId(matchingPool.id)
+                      openPoolDetails(matchingPool.id, 'position')
                     }
 
                     return (
@@ -485,8 +498,7 @@ export function DefiOperations({
                   <div
                     key={`featured-${pool.id}`}
                     onClick={() => {
-                      setDetailTab('overview')
-                      setSelectedPoolId(pool.id)
+                      openPoolDetails(pool.id, 'overview')
                     }}
                     className={`group relative cursor-pointer overflow-hidden rounded-xl border p-5 transition-all duration-200 ${
                       selectedPoolId === pool.id
@@ -597,8 +609,7 @@ export function DefiOperations({
                           isSelected ? 'bg-[#F2C12E]/[0.06]' : 'hover:bg-white/[0.025]'
                         }`}
                         onClick={() => {
-                          setDetailTab('overview')
-                          setSelectedPoolId(pool.id)
+                          openPoolDetails(pool.id, 'overview')
                         }}
                         type="button"
                       >
@@ -621,8 +632,7 @@ export function DefiOperations({
                       </button>
                       <div
                         onClick={() => {
-                          setDetailTab('overview')
-                          setSelectedPoolId(pool.id)
+                          openPoolDetails(pool.id, 'overview')
                         }}
                         className={`hidden cursor-pointer grid-cols-[minmax(0,2.8fr)_110px_130px_150px_140px_110px] items-center gap-6 px-6 py-4 transition-colors lg:grid ${
                           isSelected ? 'bg-[#F2C12E]/[0.06]' : 'hover:bg-white/[0.03]'
@@ -698,8 +708,7 @@ export function DefiOperations({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setDetailTab('overview')
-                              setSelectedPoolId(pool.id)
+                              openPoolDetails(pool.id, 'overview')
                             }}
                             className={`h-9 w-[88px] rounded-md px-3 text-sm font-medium transition-all ${
                               isSelected

@@ -1,0 +1,44 @@
+.brand-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+  color: inherit;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.brand-wordmark .brand-name {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.brand-eight {
+  display: inline-flex;
+  width: .98em;
+  height: .98em;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #777b76;
+  border-radius: 50%;
+  background: #101210;
+}
+.brand-eight > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 66%;
+  height: 66%;
+  border-radius: 50%;
+  background: #f0f1e9;
+  color: #101210;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: .57em;
+  line-height: 1;
+}
+@media (max-width: 639px) {
+  .brand-wordmark.app-wordmark { font-size: 22px; gap: 6px; }
+}

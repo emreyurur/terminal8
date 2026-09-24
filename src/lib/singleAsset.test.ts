@@ -56,4 +56,12 @@ describe('positionAmountFromPlan', () => {
   it('uses the received side when the primary asset is the other one', () => {
     expect(positionAmountFromPlan(plan, 'TKN')).toBe(4000)
   })
+
+  it('treats native and XLM as the same asset', () => {
+    expect(positionAmountFromPlan({ ...plan, sourceAsset: 'native' }, 'XLM')).toBe(50)
+  })
+
+  it('matches an issued asset by code when the plan includes its issuer', () => {
+    expect(positionAmountFromPlan({ ...plan, sourceAsset: `istanbul:${ISSUER}` }, 'istanbul')).toBe(50)
+  })
 })

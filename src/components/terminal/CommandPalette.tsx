@@ -5,13 +5,15 @@ import { TerminalStream } from './TerminalStream'
 // ─── Command Palette (Cmd+K modal) ───────────────────────────────────────────
 
 type CommandPaletteProps = {
+  commandContext: CommandContext | null
   lines: TerminalLine[]
   open: boolean
+  onClear: () => void
   onClose: () => void
   onSubmitLines: (lines: TerminalLine[]) => void
 }
 
-export function CommandPalette({ lines, open, onClose, onSubmitLines }: CommandPaletteProps) {
+export function CommandPalette({ commandContext, lines, open, onClear, onClose, onSubmitLines }: CommandPaletteProps) {
   const [input, setInput] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -26,11 +28,24 @@ export function CommandPalette({ lines, open, onClose, onSubmitLines }: CommandP
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, open])
 
-  const handleSubmit = (event: { preventDefault(): void }) => {
+  const handleSubmit = async (event: { preventDefault(): void }) => {
     event.preventDefault()
-    if (!input.trim()) return
-    onSubmitLines([{ id: `cmd-${Date.now()}`, kind: 'command', text: input }])
+    const trimmed = input.trim()
+    if (!trimmed) return
     setInput('')
+
+    if (trimmed.toLowerCase() === 'clear') {
+      onClear()
+      onClose()
+      return
+    }
+
+    onSubmitLines([{ id: `cmd-${Date.now()}`, kind: 'command', text: trimmed }])
+    if (commandContext) {
+      await runCommand(trimmed, commandContext, (line) => onSubmitLines([line]))
+    } else {
+      onSubmitLines([{ id: `err-${Date.now()}`, kind: 'error', text: 'Terminal context not available.' }])
+    }
     onClose()
   }
 
@@ -64,7 +79,7 @@ export function CommandPalette({ lines, open, onClose, onSubmitLines }: CommandP
             autoComplete="off"
             className="w-full bg-transparent font-terminal text-xl text-[#F0F0F0] outline-none placeholder:text-[#9CA3AF]"
             onChange={(e) => setInput(e.target.value)}
-            placeholder="positions · withdraw 1 --full · pools · help"
+            placeholder="pools · deposit 1 10 10 · withdraw 1 --full"
             value={input}
           />
         </form>
@@ -220,7 +235,7 @@ export function BottomTerminal({
             className="min-w-0 flex-1 bg-transparent font-terminal text-sm outline-none placeholder:text-[#9CA3AF]"
             disabled={executing}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={executing ? '' : 'positions · withdraw 1 --full · pools · help'}
+            placeholder={executing ? '' : 'pools · deposit 1 10 10 · withdraw 1 --full'}
             value={input}
           />
           {input && !executing && (

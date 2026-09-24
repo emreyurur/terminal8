@@ -1,273 +1,331 @@
-import { reputationLabel, reputationTotal, stellarPools, yieldPositions } from '../../data/stellarMock'
-import { executeMockTestnetWithdraw } from '../../services/mockTestnetWithdraw'
-import type { LocalPosition } from '../../types/stellar'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { signTransaction } from '@stellar/freighter-api'
+import { computeWithdrawShares } from '../../lib/lpShares'
+import { executeApiPoolTransaction, getOnChainLpShares } from '../../services/terminal8Api'
+import type { DeFiPool, LocalPosition } from '../../types/stellar'
 
 export type TerminalLine =
   | { id: string; kind: 'log' | 'success' | 'error' | 'command'; text: string }
-  | { id: string; kind: 'yield-table' }
   | { id: string; kind: 'help' }
+  | { id: string; kind: 'transaction'; hash: string; href: string }
 
 export type CommandContext = {
   networkPassphrase: string | null
   networkUrl: string | null
+  pools: DeFiPool[]
   positions: LocalPosition[]
   publicKey: string | null
   status: string
   xlmBalance: number
   usdcBalance: number
+  onPositionAdded: (position: Omit<LocalPosition, 'id'>) => void
   onWithdrawn: (id: string, amount: number) => void
 }
 
 type Emit = (line: TerminalLine) => void
 type Handler = (args: string[], ctx: CommandContext, emit: Emit) => void | Promise<void>
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const uid = () => `l-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`
 const log = (text: string, emit: Emit) => emit({ id: uid(), kind: 'log', text })
-const ok  = (text: string, emit: Emit) => emit({ id: uid(), kind: 'success', text })
+const ok = (text: string, emit: Emit) => emit({ id: uid(), kind: 'success', text })
 const err = (text: string, emit: Emit) => emit({ id: uid(), kind: 'error', text })
+const transaction = (hash: string, emit: Emit) => emit({
+  id: uid(),
+  kind: 'transaction',
+  hash,
+  href: `https://stellar.expert/explorer/testnet/tx/${encodeURIComponent(hash)}`,
+})
 
-function pad(s: string, w: number) {
-  const str = String(s)
-  return str.length >= w ? str.slice(0, w - 1) + '…' : str.padEnd(w)
+function pad(value: string, width: number) {
+  const text = String(value)
+  return text.length >= width ? `${text.slice(0, width - 1)}…` : text.padEnd(width)
 }
 
 function formatElapsed(ms: number) {
-  const m = Math.floor(ms / 60_000)
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h`
-  return `${Math.floor(h / 24)}d`
+  const minutes = Math.max(0, Math.floor(ms / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
 }
 
-// ─── Commands ─────────────────────────────────────────────────────────────────
+function estimateEarned(position: LocalPosition) {
+  const elapsedHours = Math.max(0, Date.now() - position.openedAt) / 3_600_000
+  return position.amount * (position.apy / 100) * (elapsedHours / 8_760)
+}
+
+function resolvePool(selector: string | undefined, pools: DeFiPool[]): DeFiPool | undefined {
+  if (!selector) return undefined
+  const index = Number(selector) - 1
+  if (Number.isInteger(index) && index >= 0) return pools[index]
+  const normalized = selector.toLowerCase()
+  return pools.find((pool) => pool.id.toLowerCase() === normalized)
+}
 
 const commands: Record<string, Handler> = {
-
   help: (_, __, emit) => {
     emit({ id: uid(), kind: 'help' })
   },
 
   positions: (_, ctx, emit) => {
     if (ctx.status !== 'CONNECTED') {
-      err('Not connected — click Connect in the header.', emit)
+      err('Wallet not connected. Use the Connect button in the header.', emit)
       return
     }
     if (ctx.positions.length === 0) {
-      log('No open positions. Supply to a pool from the UI.', emit)
+      log('No active positions. Open a vault from the Home screen.', emit)
       return
     }
-    log(`  ${pad('#', 3)}${pad('Protocol', 20)}${pad('Asset', 6)}${pad('Staked', 10)}${pad('APY', 7)}${pad('Earned', 13)}Age`, emit)
-    log(`  ${'─'.repeat(66)}`, emit)
-    ctx.positions.forEach((pos, i) => {
-      const hours = (Date.now() - pos.openedAt) / 3_600_000
-      const earned = pos.amount * (pos.apy / 100) * (hours / 8_760)
+
+    log(`  ${pad('#', 3)}${pad('Protocol', 20)}${pad('Asset', 9)}${pad('Supplied', 12)}${pad('APY', 8)}${pad('Earned', 13)}Age`, emit)
+    log(`  ${'─'.repeat(72)}`, emit)
+    ctx.positions.forEach((position, index) => {
       ok(
-        `  ${pad(String(i + 1), 3)}${pad(pos.protocol, 20)}${pad(pos.asset, 6)}${pad(pos.amount.toFixed(2), 10)}${pad(pos.apy.toFixed(1) + '%', 7)}${pad('+' + earned.toFixed(4), 13)}${formatElapsed(Date.now() - pos.openedAt)}`,
+        `  ${pad(String(index + 1), 3)}${pad(position.protocol, 20)}${pad(position.asset, 9)}${pad(position.amount.toFixed(2), 12)}${pad(`${position.apy.toFixed(2)}%`, 8)}${pad(`+${estimateEarned(position).toFixed(4)}`, 13)}${formatElapsed(Date.now() - position.openedAt)}`,
         emit,
       )
     })
   },
 
-  position: ([n], ctx, emit) => {
-    const idx = Number(n) - 1
-    if (!n || isNaN(idx) || idx < 0) { err('Usage: position <n>', emit); return }
-    const pos = ctx.positions[idx]
-    if (!pos) { err(`No position #${n}. Run: positions`, emit); return }
-    const hours = (Date.now() - pos.openedAt) / 3_600_000
-    const earned = pos.amount * (pos.apy / 100) * (hours / 8_760)
-    log(`  Protocol   ${pos.protocol}`, emit)
-    log(`  Category   ${pos.category}`, emit)
-    log(`  Staked     ${pos.amount.toFixed(2)} ${pos.asset}`, emit)
-    log(`  APY        ${pos.apy.toFixed(1)}%`, emit)
-    ok(`  Earned     +${earned.toFixed(4)} ${pos.asset} (est.)`, emit)
-    log(`  Duration   ${formatElapsed(Date.now() - pos.openedAt)}`, emit)
-    log(`  Opened     ${pos.timestamp}`, emit)
-    log(`  TX         ${pos.id.startsWith('demo-') ? 'demo position' : pos.hash}`, emit)
-  },
-
-  withdraw: async ([n, amt], ctx, emit) => {
-    const idx = Number(n) - 1
-    if (!n || isNaN(idx) || idx < 0) {
-      err('Usage:  withdraw <n> [amount]    partial withdrawal', emit)
-      err('        withdraw <n> --full       close position', emit)
+  position: ([number], ctx, emit) => {
+    const index = Number(number) - 1
+    if (!number || !Number.isInteger(index) || index < 0) {
+      err('Usage: position <number>', emit)
       return
     }
-    const pos = ctx.positions[idx]
-    if (!pos) { err(`No position #${n}. Run: positions`, emit); return }
-    if (ctx.status !== 'CONNECTED') { err('Not connected.', emit); return }
-    if (!ctx.publicKey || !ctx.networkUrl || !ctx.networkPassphrase) {
-      err('Missing wallet context — reconnect Freighter.', emit); return
+    if (ctx.status !== 'CONNECTED') {
+      err('Wallet not connected. Use the Connect button in the header.', emit)
+      return
+    }
+
+    const position = ctx.positions[index]
+    if (!position) {
+      err(`Position #${number} was not found. Run: positions`, emit)
+      return
+    }
+
+    log(`  Protocol   ${position.protocol}`, emit)
+    log(`  Category   ${position.category}`, emit)
+    log(`  Pool       ${position.poolId}`, emit)
+    log(`  Supplied   ${position.amount.toFixed(2)} ${position.asset}`, emit)
+    log(`  APY        ${position.apy.toFixed(2)}%`, emit)
+    ok(`  Earned     +${estimateEarned(position).toFixed(4)} ${position.asset} (estimated)`, emit)
+    log(`  Age        ${formatElapsed(Date.now() - position.openedAt)}`, emit)
+    log(`  Status     ${position.status}`, emit)
+    log(`  TX         ${position.hash || 'Unavailable'}`, emit)
+  },
+
+  pools: (_, ctx, emit) => {
+    if (ctx.pools.length === 0) {
+      log('No live pools are available from the Terminal8 API.', emit)
+      return
+    }
+    log(`  ${pad('#', 4)}${pad('Pair', 18)}${pad('Protocol', 20)}${pad('APY', 9)}${pad('Deposits', 12)}Pool ID`, emit)
+    log(`  ${'─'.repeat(78)}`, emit)
+    ctx.pools.forEach((pool, index) => {
+      const pair = pool.secondaryAsset ? `${pool.asset}/${pool.secondaryAsset}` : pool.asset
+      const shortId = pool.id.length > 18 ? `${pool.id.slice(0, 9)}…${pool.id.slice(-7)}` : pool.id
+      ok(`  ${pad(String(index + 1), 4)}${pad(pair, 18)}${pad(pool.protocol, 20)}${pad(`${pool.apy.toFixed(2)}%`, 9)}${pad(pool.tvl, 12)}${shortId}`, emit)
+    })
+    log('Use: pool <number> for the full ID, or deposit <number> <amount-a> [amount-b].', emit)
+  },
+
+  pool: ([selector], ctx, emit) => {
+    const pool = resolvePool(selector, ctx.pools)
+    if (!pool) {
+      err('Pool not found. Run: pools', emit)
+      return
+    }
+    log(`  Pair       ${pool.asset}${pool.secondaryAsset ? ` / ${pool.secondaryAsset}` : ''}`, emit)
+    log(`  Protocol   ${pool.protocol}`, emit)
+    log(`  Category   ${pool.category}`, emit)
+    log(`  APY        ${pool.apy.toFixed(2)}%`, emit)
+    log(`  Deposits   ${pool.tvl}`, emit)
+    ok(`  Pool ID    ${pool.id}`, emit)
+  },
+
+  deposit: async ([poolSelector, amountAText, amountBText = '0'], ctx, emit) => {
+    const amountA = Number(amountAText)
+    const amountB = Number(amountBText)
+    const pool = resolvePool(poolSelector, ctx.pools)
+    if (!poolSelector || !amountAText || !(amountA > 0) || !(amountB >= 0)) {
+      err('Usage: deposit <pool-number|pool-id> <amount-a> [amount-b]', emit)
+      return
+    }
+    if (!pool) {
+      err('Pool not found. Run: pools', emit)
+      return
+    }
+    if (!ctx.publicKey || !ctx.networkPassphrase || ctx.status !== 'CONNECTED') {
+      err('Wallet not connected. Use the Connect button in the header.', emit)
+      return
     }
     if (!ctx.networkPassphrase.toLowerCase().includes('test')) {
-      err('Switch Freighter to Testnet for demo withdrawals.', emit); return
+      err('Switch the connected wallet to Stellar Testnet.', emit)
+      return
     }
 
-    const isFull = !amt || amt === '--full'
-    const withdrawAmt = isFull ? pos.amount : Math.min(Number(amt), pos.amount)
-
-    if (!isFull && (isNaN(Number(amt)) || Number(amt) <= 0)) {
-      err(`Invalid amount: "${amt}"`, emit); return
-    }
-
-    log(`Initiating ${isFull ? 'full' : 'partial'} withdrawal`, emit)
-    log(`  ${withdrawAmt.toFixed(2)} ${pos.asset} from ${pos.protocol}`, emit)
-    log('Building transaction...', emit)
-    log('Requesting Freighter signature — approve in your wallet extension.', emit)
+    log(`Preparing ${pool.asset}${pool.secondaryAsset ? ` / ${pool.secondaryAsset}` : ''} deposit...`, emit)
+    log('Review and approve the transaction in your wallet.', emit)
 
     try {
-      const result = await executeMockTestnetWithdraw({
-        amount: withdrawAmt,
-        asset: pos.asset,
-        horizonUrl: ctx.networkUrl,
-        networkPassphrase: ctx.networkPassphrase,
+      const result = await executeApiPoolTransaction({
         publicKey: ctx.publicKey,
+        signTransactionFn: signTransaction,
+        params: {
+          poolId: pool.id,
+          action: 'DEPOSIT',
+          amountA,
+          amountB,
+          shareAmount: 0,
+          slippageBps: 50,
+          userAddress: ctx.publicKey,
+        },
       })
-      ok(`Transaction confirmed`, emit)
-      ok(`  ${result.hash}`, emit)
-      ctx.onWithdrawn(pos.id, withdrawAmt)
-      if (isFull || withdrawAmt >= pos.amount) {
-        ok(`Position #${n} closed.`, emit)
-      } else {
-        ok(`Position #${n} updated — ${(pos.amount - withdrawAmt).toFixed(2)} ${pos.asset} remaining.`, emit)
-      }
-    } catch (e) {
-      err(e instanceof Error ? e.message : 'Withdrawal failed.', emit)
+      ctx.onPositionAdded({
+        amount: amountA,
+        asset: pool.asset,
+        hash: result.hash,
+        protocol: pool.protocol,
+        status: result.status,
+        timestamp: new Date().toLocaleTimeString(),
+        openedAt: Date.now(),
+        apy: pool.apy,
+        category: pool.category,
+        poolId: pool.id,
+      })
+      ok('Deposit confirmed and portfolio sync requested.', emit)
+      transaction(result.hash, emit)
+    } catch (error) {
+      err(error instanceof Error ? error.message : 'Deposit failed.', emit)
     }
   },
 
-  pools: (_, __, emit) => {
-    log(`  ${pad('Pool', 30)}${pad('APY', 7)}${pad('TVL', 8)}${pad('Score', 13)}Risk`, emit)
-    log(`  ${'─'.repeat(65)}`, emit)
-    stellarPools.forEach(pool => {
-      const score = reputationTotal(pool.reputation)
-      const label = reputationLabel(score)
-      const name = pool.secondaryAsset
-        ? `${pool.protocol} ${pool.asset}/${pool.secondaryAsset}`
-        : `${pool.protocol} ${pool.asset}`
-      ok(`  ${pad(name, 30)}${pad(pool.apy.toFixed(1) + '%', 7)}${pad(pool.tvl, 8)}${pad(score + ' ' + label, 13)}${pool.risk}`, emit)
-    })
-  },
+  withdraw: async ([number, amountText = '--full'], ctx, emit) => {
+    const index = Number(number) - 1
+    if (!number || !Number.isInteger(index) || index < 0) {
+      err('Usage: withdraw <position> [amount|--full]', emit)
+      return
+    }
+    const position = ctx.positions[index]
+    if (!position) {
+      err(`Position #${number} was not found. Run: positions`, emit)
+      return
+    }
+    if (!ctx.publicKey || !ctx.networkUrl || !ctx.networkPassphrase || ctx.status !== 'CONNECTED') {
+      err('Wallet not connected. Use the Connect button in the header.', emit)
+      return
+    }
+    if (!ctx.networkPassphrase.toLowerCase().includes('test')) {
+      err('Switch the connected wallet to Stellar Testnet.', emit)
+      return
+    }
 
-  pool: ([name], _, emit) => {
-    if (!name) { err('Usage: pool <name>  — e.g. pool blend', emit); return }
-    const match = stellarPools.find(p =>
-      p.id.includes(name.toLowerCase()) ||
-      p.protocol.toLowerCase().includes(name.toLowerCase()) ||
-      p.asset.toLowerCase() === name.toLowerCase(),
-    )
-    if (!match) { err(`Not found: "${name}". Run: pools`, emit); return }
-    const score = reputationTotal(match.reputation)
-    log(`  ${match.protocol} — ${match.asset}${match.secondaryAsset ? '/' + match.secondaryAsset : ''}`, emit)
-    log(`  Category    ${match.category}`, emit)
-    log(`  APY         ${match.apy.toFixed(1)}%`, emit)
-    log(`  TVL         ${match.tvl}`, emit)
-    if (match.utilization !== undefined) log(`  Utilization ${match.utilization}%`, emit)
-    if (match.volume24h) log(`  24h Volume  ${match.volume24h}`, emit)
-    log(`  Risk        ${match.risk}`, emit)
-    ok(`  Score       ${score}/100 — ${reputationLabel(score)}`, emit)
-    log(`  Method      ${match.method}`, emit)
-    log(`  Contract    ${match.contractId}`, emit)
+    const fullWithdrawal = amountText === '--full'
+    const requestedAmount = fullWithdrawal ? position.amount : Number(amountText)
+    if (!(requestedAmount > 0) || requestedAmount > position.amount) {
+      err(`Amount must be greater than 0 and no more than ${position.amount}.`, emit)
+      return
+    }
+
+    log(`Preparing ${fullWithdrawal ? 'full' : 'partial'} withdrawal from position #${number}...`, emit)
+    try {
+      const onChainShares = await getOnChainLpShares(ctx.networkUrl, ctx.publicKey, position.poolId)
+      const shareAmount = computeWithdrawShares(onChainShares, requestedAmount, position.amount)
+      if (!(shareAmount > 0)) {
+        throw new Error('No LP shares were found for this pool in the connected wallet.')
+      }
+      log('Review and approve the transaction in your wallet.', emit)
+      const result = await executeApiPoolTransaction({
+        publicKey: ctx.publicKey,
+        signTransactionFn: signTransaction,
+        params: {
+          poolId: position.poolId,
+          action: 'WITHDRAW',
+          amountA: requestedAmount,
+          amountB: 0,
+          shareAmount,
+          slippageBps: 50,
+          userAddress: ctx.publicKey,
+        },
+      })
+      ctx.onWithdrawn(position.id, requestedAmount)
+      ok(`${fullWithdrawal ? 'Withdrawal' : 'Partial withdrawal'} confirmed.`, emit)
+      transaction(result.hash, emit)
+    } catch (error) {
+      err(error instanceof Error ? error.message : 'Withdrawal failed.', emit)
+    }
   },
 
   balance: (_, ctx, emit) => {
-    if (ctx.status !== 'CONNECTED') { err('Not connected.', emit); return }
+    if (ctx.status !== 'CONNECTED') {
+      err('Wallet not connected. Use the Connect button in the header.', emit)
+      return
+    }
     log(`  XLM     ${ctx.xlmBalance.toFixed(7)}`, emit)
     ok(`  USDC    ${ctx.usdcBalance.toFixed(7)}`, emit)
   },
 
   whoami: (_, ctx, emit) => {
-    if (!ctx.publicKey) { err('Not connected — click Connect in the header.', emit); return }
+    if (!ctx.publicKey) {
+      err('Wallet not connected. Use the Connect button in the header.', emit)
+      return
+    }
     ok(`  ${ctx.publicKey}`, emit)
     log(`  Network  ${ctx.networkPassphrase?.includes('Test') ? 'TESTNET' : 'PUBLIC'}`, emit)
   },
 
   network: (_, ctx, emit) => {
-    if (ctx.status !== 'CONNECTED') { err('Not connected.', emit); return }
-    log(`  Status       CONNECTED`, emit)
+    if (ctx.status !== 'CONNECTED') {
+      err('Wallet not connected. Use the Connect button in the header.', emit)
+      return
+    }
+    log('  Status       CONNECTED', emit)
     log(`  Network      ${ctx.networkPassphrase?.includes('Test') ? 'TESTNET' : 'PUBLIC'}`, emit)
-    log(`  Passphrase   ${ctx.networkPassphrase ?? '—'}`, emit)
-    log(`  Horizon      ${ctx.networkUrl ?? '—'}`, emit)
-  },
-
-  'sweep all': (_, ctx, emit) => {
-    if (ctx.status !== 'CONNECTED') { err('Not connected.', emit); return }
-    log('Scanning trustlines via Horizon...', emit)
-    log('Building PathPaymentStrictReceive batch with XLM bridge.', emit)
-    log('Applying fee bump envelope, requesting Freighter signature.', emit)
-    ok('Dust consolidated into USDC.', emit)
-  },
-
-  'show yield': (_, __, emit) => {
-    emit({ id: uid(), kind: 'yield-table' })
+    log(`  Passphrase   ${ctx.networkPassphrase ?? 'Unavailable'}`, emit)
+    log(`  Horizon      ${ctx.networkUrl ?? 'Unavailable'}`, emit)
   },
 }
-
-// ─── Aliases ──────────────────────────────────────────────────────────────────
 
 const aliases: Record<string, string> = {
   '/help': 'help',
   '/positions': 'positions',
   '/pos': 'positions',
-  'ls': 'positions',
+  ls: 'positions',
   '/position': 'position',
-  '/withdraw': 'withdraw',
-  'w': 'withdraw',
   '/pools': 'pools',
   '/pool': 'pool',
+  '/deposit': 'deposit',
+  '/withdraw': 'withdraw',
   '/balance': 'balance',
   '/whoami': 'whoami',
   '/network': 'network',
-  '/sweep': 'sweep all',
-  '/yield': 'show yield',
 }
-
-// ─── Public API ───────────────────────────────────────────────────────────────
 
 export const availableCommands = [
-  'positions', 'position <n>', 'withdraw <n> [amt|--full]',
-  'pools', 'pool <name>', 'balance', 'whoami', 'network',
-  'sweep all', 'show yield', 'help', 'clear',
+  'positions',
+  'position <number>',
+  'pools',
+  'pool <number>',
+  'deposit <pool-number|pool-id> <amount-a> [amount-b]',
+  'withdraw <position> [amount|--full]',
+  'balance',
+  'whoami',
+  'network',
+  'help',
+  'clear',
 ]
 
-export function getYieldRows() {
-  return yieldPositions
-}
-
-export async function runCommand(
-  raw: string,
-  ctx: CommandContext,
-  emit: Emit,
-): Promise<void> {
+export async function runCommand(raw: string, ctx: CommandContext, emit: Emit): Promise<void> {
   const trimmed = raw.trim()
-  const lower = trimmed.toLowerCase()
-  const parts = lower.split(/\s+/)
-
-  // 1. Try exact multi-word match ("sweep all", "show yield")
-  let handler = commands[lower]
-  let handlerArgs: string[] = []
-
-  // 2. Try alias on full string
-  if (!handler) {
-    const resolved = aliases[lower]
-    if (resolved) handler = commands[resolved]
-  }
-
-  // 3. Try first-word + args ("withdraw 1 50", "position 2")
-  if (!handler) {
-    const cmd = parts[0]
-    const resolved = aliases[cmd] ?? cmd
-    handler = commands[resolved]
-    handlerArgs = parts.slice(1)
-  }
+  const parts = trimmed.split(/\s+/)
+  const commandToken = parts[0].toLowerCase()
+  const commandName = aliases[commandToken] ?? commandToken
+  const handler = commands[commandName]
 
   if (!handler) {
     emit({ id: uid(), kind: 'error', text: `Unknown command: "${trimmed}". Type help.` })
     return
   }
 
-  await handler(handlerArgs, ctx, emit)
+  await handler(parts.slice(1), ctx, emit)
 }

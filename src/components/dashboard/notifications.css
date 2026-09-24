@@ -26,25 +26,38 @@
   background-position: right 16px center;
   background-size: 16px;
 }
-#notification-content {
+#notification-content,
+.notification-form-scroll {
   background-color: #0f141c;
   scrollbar-color: #3f4652 #0f141c;
   scrollbar-width: thin;
 }
-#notification-content::-webkit-scrollbar { width: 10px; }
-#notification-content::-webkit-scrollbar-track { background: #0f141c; }
-#notification-content::-webkit-scrollbar-thumb {
+#notification-content::-webkit-scrollbar,
+.notification-form-scroll::-webkit-scrollbar { width: 10px; }
+#notification-content::-webkit-scrollbar-track,
+.notification-form-scroll::-webkit-scrollbar-track { background: #0f141c; }
+#notification-content::-webkit-scrollbar-thumb,
+.notification-form-scroll::-webkit-scrollbar-thumb {
   min-height: 48px;
   border: 2px solid #0f141c;
   border-radius: 999px;
   background: #3f3f46;
 }
-#notification-content::-webkit-scrollbar-thumb:hover { background: #52525b; }
-#notification-content::-webkit-scrollbar-corner { background: #0f141c; }
+#notification-content::-webkit-scrollbar-thumb:hover,
+.notification-form-scroll::-webkit-scrollbar-thumb:hover { background: #52525b; }
+#notification-content::-webkit-scrollbar-corner,
+.notification-form-scroll::-webkit-scrollbar-corner { background: #0f141c; }
 .notification-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; color: #a1a1aa; }
 .notification-icon:hover { background: #ffffff0a; color: white; }
 .notification-icon:disabled, .notification-command:disabled { opacity: .4; cursor: default; }
 .notification-panel :focus-visible, .notification-trigger:focus-visible { outline: 2px solid #f2c12e; outline-offset: 3px; }
+.notification-panel input:not([type='checkbox']):focus-visible,
+.notification-panel select:focus-visible,
+.notification-panel textarea:focus-visible {
+  outline: none;
+  outline-offset: 0;
+  box-shadow: none;
+}
 .notification-tab { padding: 16px 4px; margin-right: 24px; font-size: 13px; color: #a1a1aa; border-bottom: 2px solid transparent; }
 .notification-tab[aria-selected='true'] { color: #fafafa; border-bottom-color: #f2c12e; }
 .notification-primary, .notification-command { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 6px; padding: 9px 12px; font-size: 12px; font-weight: 600; }

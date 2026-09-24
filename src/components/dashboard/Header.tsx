@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bell } from 'lucide-react'
-import eightLogo from '../../assets/eight.svg'
+import { BrandWordmark } from '../BrandWordmark'
 import { truncatePublicKey } from '../../lib/format'
 import { useWallet } from '../../context/useWallet'
 import type { WalletErrorType } from '../../context/WalletContext'
@@ -93,28 +93,21 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
 
   return (
     <nav className="sticky start-0 top-0 z-50 w-full border-b border-white/[0.06] bg-[#080B10]/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-20 max-w-[1440px] flex-wrap items-center justify-between px-4 sm:px-6">
-        <button
+      <div className="mx-auto flex min-h-20 max-w-[1440px] flex-wrap items-center justify-between px-4 py-4 sm:px-6 md:h-20 md:py-0">
+        <a
           className="group flex items-center space-x-3 text-left rtl:space-x-reverse"
-          onClick={() => onPageChange('landing')}
+          href="/"
+          onClick={(event) => {
+            event.preventDefault()
+            onPageChange('landing')
+          }}
           title="Return to Landing Page"
-          type="button"
         >
-          <span
-            className="flex items-center gap-1.5 leading-none text-[#F0F0F0]"
-            style={{ fontFamily: "'Syne', sans-serif", fontSize: '21px', fontWeight: 800, letterSpacing: 0 }}
-          >
-            <span>TERMINAL</span>
-            <img
-              alt="8"
-              className="h-7 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105"
-              src={eightLogo}
-            />
-          </span>
-        </button>
+          <BrandWordmark className="app-wordmark" />
+        </a>
 
         <div className="flex items-center gap-2 md:order-2">
-          <button type="button" className="notification-trigger notification-icon relative border border-white/[0.08] bg-[#171B24] hover:bg-[#1C212C]" aria-label={unreadAlerts ? `Notifications, ${unreadAlerts} unread` : 'Notifications'} aria-haspopup="dialog" aria-expanded={notificationsOpen} onClick={() => { setAccountMenuOpen(false); setMobileMenuOpen(false); onOpenNotifications() }}>
+          <button type="button" className="notification-trigger notification-icon relative max-sm:!size-9 border border-white/[0.08] bg-[#171B24] hover:bg-[#1C212C]" aria-label={unreadAlerts ? `Notifications, ${unreadAlerts} unread` : 'Notifications'} aria-haspopup="dialog" aria-expanded={notificationsOpen} onClick={() => { setAccountMenuOpen(false); setMobileMenuOpen(false); onOpenNotifications() }}>
             <Bell size={20} strokeWidth={1.7} />
             {unreadAlerts > 0 && <span className="absolute -right-1 -top-0.5 min-w-4 rounded-full bg-[#F2C12E] px-1 text-center text-[9px] font-bold leading-4 text-black">{unreadAlerts > 99 ? '99+' : unreadAlerts}</span>}
             <span role="tooltip" className="notification-tooltip absolute right-0 top-full z-50 mt-2 rounded bg-zinc-800 px-2 py-1 text-xs text-white shadow-lg">Notifications</span>
@@ -122,7 +115,8 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
           <div className="relative" ref={accountMenuRef}>
             <button
               aria-expanded={accountMenuOpen}
-              className="inline-flex h-10 min-w-27 items-center justify-center gap-2 rounded-md border border-white/[0.08] bg-[#171B24] px-4 text-sm font-medium text-[#F0F0F0] transition hover:border-[#F2C12E]/40 hover:bg-[#1C212C] focus:outline-none focus:ring-2 focus:ring-[#F2C12E]/50"
+              aria-label={connected ? `Connected wallet ${truncatePublicKey(publicKey)}` : 'Connect Wallet'}
+              className="inline-flex h-9 sm:h-10 sm:min-w-27 items-center justify-center gap-1.5 sm:gap-2 rounded-md border border-white/[0.08] bg-[#171B24] px-2 sm:px-4 text-xs sm:text-sm font-medium text-[#F0F0F0] transition hover:border-[#F2C12E]/40 hover:bg-[#1C212C] focus:outline-none focus:ring-2 focus:ring-[#F2C12E]/50"
               disabled={status === 'CONNECTING'}
               onClick={handleWalletClick}
               type="button"
@@ -139,6 +133,8 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
                   />
                 )}
               </span>
+              <span className="sm:hidden">{status === 'CONNECTING' ? '...' : connected ? `${publicKey.slice(0, 4)}...` : 'Connect'}</span>
+              <span className="hidden sm:inline-flex">
               {status === 'CONNECTING' ? (
                 'Connecting...'
               ) : connected ? (
@@ -173,6 +169,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
               ) : (
                 'Connect Wallet'
               )}
+              </span>
             </button>
 
             {connected && accountMenuOpen ? (
@@ -227,7 +224,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
           <button
             aria-controls="navbar-sticky"
             aria-expanded={mobileMenuOpen}
-            className="ml-2 inline-flex size-10 items-center justify-center rounded-lg p-2 text-sm text-[#9CA3AF] hover:bg-white/[0.06] hover:text-[#F0F0F0] focus:outline-none focus:ring-2 focus:ring-white/20 md:hidden"
+            className="sm:ml-2 inline-flex size-8 sm:size-10 items-center justify-center rounded-lg p-1.5 sm:p-2 text-sm text-[#9CA3AF] hover:bg-white/[0.06] hover:text-[#F0F0F0] focus:outline-none focus:ring-2 focus:ring-white/20 md:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             type="button"
           >
@@ -245,21 +242,22 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
           <ul className="mt-4 flex flex-col rounded-lg border border-white/[0.08] bg-[#11151D] p-3 font-medium md:mt-0 md:flex-row md:items-center md:gap-1 md:border-0 md:bg-transparent md:p-0">
             {(['home', 'docs'] as const).map((page) => (
               <li key={page}>
-                <button
-                  aria-pressed={activePage === page}
-                  className={`block h-10 w-full rounded-lg px-4 text-left text-sm transition md:w-auto ${
+                <a
+                  aria-current={activePage === page ? 'page' : undefined}
+                  className={`flex h-10 w-full items-center rounded-lg px-4 text-left text-sm leading-none transition md:w-auto md:justify-center ${
                     activePage === page
                       ? 'bg-[#F2C12E]/10 font-medium text-[#F2C12E]'
                       : 'font-normal text-[#9CA3AF] hover:bg-white/[0.04] hover:text-white'
                   }`}
-                  onClick={() => {
+                  href={page === 'home' ? '/app' : '/docs'}
+                  onClick={(event) => {
+                    event.preventDefault()
                     onPageChange(page)
                     setMobileMenuOpen(false)
                   }}
-                  type="button"
                 >
                   {NAV_LABELS[page]}
-                </button>
+                </a>
               </li>
             ))}
             <li>

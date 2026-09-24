@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { LockKeyhole, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react'
 import xlmLogo from '../../assets/xlm.svg'
 import usdcLogo from '../../assets/usdc.svg'
 import aquaLogo from '../../assets/aquaris.svg'
@@ -12,7 +13,10 @@ import {
   type ApiHistoryItem,
 } from '../../services/terminal8Api'
 import { computeWithdrawShares } from '../../lib/lpShares'
+import { buildPositionMetricSeries, type PositionMetric, type PositionMetricPoint } from '../../lib/positionMetrics'
+import { findActivePositionForPool } from '../../lib/vaultVoting'
 import { SingleAssetDepositPanel } from './SingleAssetDepositPanel'
+import { TransactionReceipt } from './TransactionReceipt'
 import { executeOnChainTrustVote, fetchOnChainPoolScore } from '../../services/poolVotingContract'
 import { estimateSecondaryAmount } from '../../services/soroswapLiquidity'
 import { signTransaction } from '@stellar/freighter-api'
@@ -89,32 +93,6 @@ function TokenAvatar({ code = 'XLM', size = 'md' }: { code?: string; size?: 'sm'
 }
 
 // ─── Chart Data Generator ─────────────────────────────────────────────────────
-
-function generateMockChartData(baseApy: number, baseTvlRaw: number, days = 30) {
-  const data = []
-  const now = new Date()
-  let currentApy = baseApy * 0.82
-  let currentTvl = baseTvlRaw * 0.91
-
-  for (let i = days; i >= 0; i--) {
-    const d = new Date(now)
-    d.setDate(d.getDate() - i)
-
-    currentApy += (Math.random() - 0.48) * 0.4 + (baseApy - currentApy) * 0.12
-    currentTvl += (Math.random() - 0.48) * (baseTvlRaw * 0.04) + (baseTvlRaw - currentTvl) * 0.1
-
-    data.push({
-      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      apy: Math.max(0.1, currentApy),
-      tvl: Math.max(0, currentTvl),
-    })
-  }
-
-  data[data.length - 1].apy = baseApy
-  data[data.length - 1].tvl = baseTvlRaw
-
-  return data
-}
 
 // ─── Custom Pure SVG Interactive Area Chart (Zero External Dependencies) ───────
 
@@ -267,6 +245,72 @@ function PerformanceAreaChart({
   )
 }
 
+function PositionMetricChart({ data, metric }: { data: PositionMetricPoint[]; metric: PositionMetric }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const width = 640
+  const height = 220
+  const padX = 18
+  const padTop = 18
+  const padBottom = 28
+  const chartWidth = width - padX * 2
+  const chartHeight = height - padTop - padBottom
+  const values = data.map((point) => Number(point.value) || 0)
+  const minValue = Math.min(...values, 0)
+  const maxValue = Math.max(...values, 0)
+  const range = Math.max(1, maxValue - minValue)
+  const color = metric === 'interest' ? '#35D49A' : metric === 'apy' ? '#F2C12E' : '#3B82F6'
+  const points = data.map((point, index) => ({
+    ...point,
+    x: data.length === 1 ? width / 2 : padX + (index / (data.length - 1)) * chartWidth,
+    y: padTop + chartHeight - ((point.value - minValue) / range) * chartHeight,
+  }))
+  const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x},${point.y}`).join(' ')
+  const areaPath = points.length > 1
+    ? `${linePath} L ${points.at(-1)?.x},${padTop + chartHeight} L ${points[0].x},${padTop + chartHeight} Z`
+    : ''
+  const activePoint = points[hoverIndex ?? Math.max(0, points.length - 1)]
+
+  const formatValue = (value: number) => metric === 'apy'
+    ? `${value.toFixed(2)}%`
+    : value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+
+  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current || points.length < 2) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+    setHoverIndex(Math.round(ratio * (points.length - 1)))
+  }
+
+  return (
+    <div className="relative h-full w-full select-none">
+      <svg ref={svgRef} className="size-full overflow-visible" onMouseLeave={() => setHoverIndex(null)} onMouseMove={handleMouseMove} viewBox={`0 0 ${width} ${height}`}>
+        <defs>
+          <linearGradient id={`position-metric-${metric}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 0.5, 1].map((fraction) => (
+          <line key={fraction} x1={padX} x2={width - padX} y1={padTop + chartHeight * fraction} y2={padTop + chartHeight * fraction} stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+        ))}
+        {areaPath && <path d={areaPath} fill={`url(#position-metric-${metric})`} />}
+        {linePath && <path d={linePath} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />}
+        {activePoint && <circle cx={activePoint.x} cy={activePoint.y} fill="#111119" r="5" stroke={color} strokeWidth="3" />}
+        {points.filter((_, index) => index === 0 || index === Math.floor(points.length / 2) || index === points.length - 1).map((point, index) => (
+          <text key={`${point.timestamp}-${index}`} className="fill-[#6B7280] text-[10px]" textAnchor={index === 0 ? 'start' : index === 2 ? 'end' : 'middle'} x={point.x} y={height - 6}>{point.date}</text>
+        ))}
+      </svg>
+      {activePoint && (
+        <div className="absolute right-2 top-0 rounded-md border border-white/[0.1] bg-[#0D0D14]/90 px-3 py-1.5 text-xs shadow-xl backdrop-blur-md">
+          <span className="mr-3 text-[#9CA3AF]">{activePoint.date}</span>
+          <span className="font-mono font-semibold text-white">{formatValue(activePoint.value)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DepositModeToggle({
   mode,
   onChange,
@@ -304,6 +348,7 @@ export function PoolDetailsView({
   available,
   initialTab = 'overview',
   onBack,
+  onTabChange,
   onPositionAdded,
   onPositionRemoved,
   pool,
@@ -312,6 +357,7 @@ export function PoolDetailsView({
   available: number
   initialTab?: 'overview' | 'position'
   onBack: () => void
+  onTabChange?: (tab: 'overview' | 'position') => void
   onPositionAdded: (pos: Omit<LocalPosition, 'id'>) => void
   onPositionRemoved?: (id: string, amount: number) => void
   pool: DeFiPool
@@ -330,9 +376,16 @@ export function PoolDetailsView({
     })
   }, [initialTab])
 
+  const selectPageTab = (tab: 'overview' | 'position') => {
+    setActivePageTab(tab)
+    onTabChange?.(tab)
+  }
+
   // Chart Metric & Timeframe
   const [chartMetric, setChartMetric] = useState<'apy' | 'tvl'>('apy')
   const [timeframe, setTimeframe] = useState<7 | 30 | 90>(30)
+  const [positionChartMetric, setPositionChartMetric] = useState<PositionMetric>('value')
+  const [positionTimeframe, setPositionTimeframe] = useState<7 | 30>(30)
 
   // Deposit Form State
   const [amount, setAmount] = useState<number>(0)
@@ -340,6 +393,7 @@ export function PoolDetailsView({
   const [txState, setTxState] = useState<'idle' | 'signing' | 'submitted' | 'error'>('idle')
   const [txMessage, setTxMessage] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
+  const [optimisticPosition, setOptimisticPosition] = useState<LocalPosition | null>(null)
 
   // Withdraw State (for My Position tab)
   const [withdrawAmount, setWithdrawAmount] = useState<number>(0)
@@ -348,9 +402,9 @@ export function PoolDetailsView({
   const [withdrawTxMessage, setWithdrawTxMessage] = useState<string | null>(null)
   const [actionTab, setActionTab] = useState<'deposit' | 'withdraw'>('deposit')
 
-  // On-Chain Trust Score Voting State (with localStorage persistence across page refreshes)
-  const [upvotes, setUpvotes] = useState(24)
-  const [downvotes, setDownvotes] = useState(3)
+  // Vote totals always come from the deployed Soroban contract.
+  const [onChainVotes, setOnChainVotes] = useState<{ upvotes: number; downvotes: number } | null>(null)
+  const [voteScoreStatus, setVoteScoreStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
   const [userVote, setUserVote] = useState<'up' | 'down' | null>(null)
   const [voteNotice, setVoteNotice] = useState<{
     type: 'error' | 'success' | 'info'
@@ -359,45 +413,32 @@ export function PoolDetailsView({
   } | null>(null)
   const [voting, setVoting] = useState(false)
 
-  useEffect(() => {
-    const loadVotesAndScore = async () => {
-      try {
-        const raw = localStorage.getItem('terminal8_pool_trust_votes_v1')
-        const storage: Record<string, { upvotes: number; downvotes: number; voters: Record<string, 'up' | 'down'> }> = raw
-          ? JSON.parse(raw)
-          : {}
-        const record = storage[pool.id]
-        if (record) {
-          setUpvotes(record.upvotes)
-          setDownvotes(record.downvotes)
-          const myVote = record.voters[publicKey || 'guest'] || null
-          setUserVote(myVote)
-        } else {
-          setUpvotes(24)
-          setDownvotes(3)
-          setUserVote(null)
-        }
-      } catch {
-        setUpvotes(24)
-        setDownvotes(3)
-        setUserVote(null)
+  const refreshOnChainVotes = useCallback(async () => {
+    setVoteScoreStatus('loading')
+    try {
+      const score = await fetchOnChainPoolScore(pool.id)
+      if (!score) {
+        setOnChainVotes(null)
+        setVoteScoreStatus('unavailable')
+        return null
       }
 
-      try {
-        const score = await fetchOnChainPoolScore(pool.id)
-        if (score && (score.upvotes > 0 || score.downvotes > 0)) {
-          setUpvotes(score.upvotes)
-          setDownvotes(score.downvotes)
-        }
-      } catch {
-        // ignore
-      }
+      setOnChainVotes(score)
+      setVoteScoreStatus('ready')
+      return score
+    } catch {
+      setOnChainVotes(null)
+      setVoteScoreStatus('unavailable')
+      return null
     }
+  }, [pool.id])
 
+  useEffect(() => {
     queueMicrotask(() => {
-      void loadVotesAndScore()
+      setUserVote(null)
+      void refreshOnChainVotes()
     })
-  }, [pool.id, publicKey])
+  }, [refreshOnChainVotes, publicKey])
 
   const [historyItems, setHistoryItems] = useState<ApiHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState<boolean>(false)
@@ -410,47 +451,13 @@ export function PoolDetailsView({
     queueMicrotask(() => setHistoryLoading(true))
     fetchTransactionHistory(20, 1)
       .then((items) => {
-        let filtered = items
-        if (items && items.length > 0) {
-          const exactMatches = items.filter(
-            (i) =>
-              i.poolId === pool.id ||
-              String(i.asset || i.tokenCode || '').toUpperCase() === String(pool.asset).toUpperCase()
-          )
-          if (exactMatches.length > 0) {
-            filtered = exactMatches
-          }
-        }
-        if (filtered && filtered.length > 0) {
-          setHistoryItems(filtered)
-        } else {
-          setHistoryItems([
-            {
-              id: `demo-hist-${pool.id}`,
-              timestamp: 'Jul 13, 2026 00:31',
-              type: 'Deposit',
-              tokens: `1.00 ${pool.asset}`,
-              asset: String(pool.asset),
-              amount: 1.00,
-              value: '$1.00',
-              hash: '4a6b8c...9d2e1f',
-            },
-          ])
-        }
+        const filtered = (items ?? []).filter(
+          (item) => item.poolId === pool.id || String(item.asset || item.tokenCode || '').toUpperCase() === String(pool.asset).toUpperCase(),
+        )
+        setHistoryItems(filtered)
       })
       .catch(() => {
-        setHistoryItems([
-          {
-            id: `demo-hist-${pool.id}`,
-            timestamp: 'Jul 13, 2026 00:31',
-            type: 'Deposit',
-            tokens: `1.00 ${pool.asset}`,
-            asset: String(pool.asset),
-            amount: 1.00,
-            value: '$1.00',
-            hash: '4a6b8c...9d2e1f',
-          },
-        ])
+        setHistoryItems([])
       })
       .finally(() => {
         setHistoryLoading(false)
@@ -474,25 +481,40 @@ export function PoolDetailsView({
 
   const safeApy = Number.isFinite(Number(pool.apy)) ? Number(pool.apy) : 5.0
 
-  const myPosition = userPositions.find((p) => Boolean(p.poolId) && (p.poolId === pool.id || (pool.contractId && p.poolId === pool.contractId)))
+  const hasConfirmedPosition = optimisticPosition
+    ? userPositions.some((position) => position.hash === optimisticPosition.hash)
+    : false
+  const visiblePositions = optimisticPosition && !hasConfirmedPosition
+    ? [optimisticPosition, ...userPositions]
+    : userPositions
+  const myPosition = findActivePositionForPool(visiblePositions, pool)
   const rawAmount = Number(myPosition?.amount)
   const suppliedAmount = Number.isFinite(rawAmount) ? rawAmount : 0
-  const suppliedUsdValue = Number.isFinite(suppliedAmount * tokenUsdPrice) ? suppliedAmount * tokenUsdPrice : 0
+  const localPositionValueUsd = Number.isFinite(suppliedAmount * tokenUsdPrice) ? suppliedAmount * tokenUsdPrice : 0
+  const apiPositionValueUsd = Number(myPosition?.currentValueUsd)
+  const suppliedUsdValue = Number.isFinite(apiPositionValueUsd) ? apiPositionValueUsd : localPositionValueUsd
+  const apiSharesOwned = Number(myPosition?.sharesOwned)
+  const displayedShares = Number.isFinite(apiSharesOwned) ? apiSharesOwned : suppliedAmount
   const withdrawUsdValue = Number.isFinite(withdrawAmount * tokenUsdPrice) ? withdrawAmount * tokenUsdPrice : 0
   const elapsed = myPosition?.openedAt ? getNowTimestamp() - myPosition.openedAt : 0
   const hours = elapsed / 3_600_000
   const positionEarnedUsd = myPosition
     ? suppliedUsdValue * (((Number(myPosition.apy) || safeApy)) / 100) * (hours / 8760)
     : 0
-  const safeEarnedUsd = Number.isFinite(positionEarnedUsd) ? positionEarnedUsd : 0
+  const apiPositionPnlUsd = Number(myPosition?.pnlUsd)
+  const safeEarnedUsd = Number.isFinite(apiPositionPnlUsd)
+    ? apiPositionPnlUsd
+    : Number.isFinite(positionEarnedUsd) ? positionEarnedUsd : 0
+  const voteControlsDisabled = voting || !myPosition || !canSign || voteScoreStatus !== 'ready'
+  const trustedVotes = voteScoreStatus === 'loading' ? '...' : voteScoreStatus === 'ready' ? String(onChainVotes?.upvotes ?? 0) : '--'
+  const riskyVotes = voteScoreStatus === 'loading' ? '...' : voteScoreStatus === 'ready' ? String(onChainVotes?.downvotes ?? 0) : '--'
 
   const handleTrustVote = async (isUpvote: boolean) => {
     setVoteNotice(null)
-    const hasActivePos = Boolean(myPosition) || suppliedAmount > 0
-    if (!hasActivePos) {
+    if (!myPosition) {
       setVoteNotice({
         type: 'error',
-        text: '⚠️ Soroban Contract Rule: Only users with an active open position in this vault can vote on its Trust Score.',
+        text: 'Only wallets with an active position in this vault can vote.',
       })
       return
     }
@@ -500,7 +522,7 @@ export function PoolDetailsView({
     if (!publicKey || !networkUrl || !networkPassphrase) {
       setVoteNotice({
         type: 'error',
-        text: '⚠️ Please connect your Freighter wallet to sign the on-chain vote.',
+        text: 'Connect your wallet to sign the on-chain vote.',
       })
       return
     }
@@ -513,7 +535,7 @@ export function PoolDetailsView({
       setVoting(true)
       setVoteNotice({
         type: 'info',
-        text: '⏳ Please approve the on-chain governance vote transaction in Freighter...',
+        text: 'Approve the on-chain governance vote in your wallet.',
       })
 
       const res = await executeOnChainTrustVote({
@@ -524,39 +546,13 @@ export function PoolDetailsView({
         networkPassphrase,
       })
 
-      let nextUp = upvotes
-      let nextDown = downvotes
-      if (isUpvote) {
-        nextUp = upvotes + 1
-        if (userVote === 'down') nextDown = Math.max(0, downvotes - 1)
-      } else {
-        nextDown = downvotes + 1
-        if (userVote === 'up') nextUp = Math.max(0, upvotes - 1)
-      }
       const nextUserVote = isUpvote ? 'up' : 'down'
-
-      setUpvotes(nextUp)
-      setDownvotes(nextDown)
       setUserVote(nextUserVote)
-
-      try {
-        const raw = localStorage.getItem('terminal8_pool_trust_votes_v1')
-        const storage: Record<string, { upvotes: number; downvotes: number; voters: Record<string, 'up' | 'down'> }> = raw
-          ? JSON.parse(raw)
-          : {}
-        const record = storage[pool.id] || { upvotes: 24, downvotes: 3, voters: {} }
-        record.upvotes = nextUp
-        record.downvotes = nextDown
-        record.voters[publicKey || 'guest'] = nextUserVote
-        storage[pool.id] = record
-        localStorage.setItem('terminal8_pool_trust_votes_v1', JSON.stringify(storage))
-      } catch (err) {
-        console.error('Failed to save vote state to localStorage', err)
-      }
+      await refreshOnChainVotes()
 
       setVoteNotice({
         type: 'success',
-        text: '✓ On-chain Trust Score vote recorded on Stellar Testnet!',
+        text: 'On-chain vault vote confirmed on Stellar Testnet.',
         hash: res.hash,
       })
     } catch (err: unknown) {
@@ -575,40 +571,63 @@ export function PoolDetailsView({
   const apiDashboard = dashboardState.status === 'success' ? dashboardState.data : undefined
   const vaultOverview = apiDashboard?.vaultOverview
 
-  const utilizationPct = Number.isFinite(Number(vaultOverview?.utilization)) && Number(vaultOverview?.utilization) > 0
+  const hasVaultOverview = Boolean(vaultOverview)
+  const utilizationPct = hasVaultOverview && Number.isFinite(Number(vaultOverview?.utilization))
     ? Number(vaultOverview?.utilization)
-    : Number.isFinite(Number(pool.utilization)) ? Number(pool.utilization) : 89.4
+    : Number.isFinite(Number(pool.utilization)) ? Number(pool.utilization) : 0
 
   const rawSupplied = Number(vaultOverview?.totalSupplied)
-  const suppliedVal = Number.isFinite(rawSupplied) && rawSupplied > 0 ? rawSupplied : safeTvlRaw
+  const suppliedVal = hasVaultOverview && Number.isFinite(rawSupplied) ? rawSupplied : safeTvlRaw
   const rawBorrowed = Number(vaultOverview?.totalBorrowed)
-  const borrowedVal = Number.isFinite(rawBorrowed) && rawBorrowed > 0 ? rawBorrowed : safeTvlRaw * (utilizationPct / 100)
+  const borrowedVal = hasVaultOverview && Number.isFinite(rawBorrowed) ? rawBorrowed : safeTvlRaw * (utilizationPct / 100)
 
-  const totalSuppliedUsd = pool.tvl || (suppliedVal >= 1_000_000
+  const totalSuppliedUsd = hasVaultOverview ? (suppliedVal >= 1_000_000
     ? `$${(suppliedVal / 1_000_000).toFixed(2)}M`
-    : `$${suppliedVal.toFixed(0)}`)
+    : `$${suppliedVal.toFixed(0)}`) : pool.tvl
   const totalBorrowedUsd = borrowedVal >= 1_000_000
     ? `$${(borrowedVal / 1_000_000).toFixed(2)}M`
     : `$${borrowedVal.toFixed(0)}`
   const rawSupplyApy = Number(vaultOverview?.supplyApy)
-  const supplyApy = Number.isFinite(rawSupplyApy) && rawSupplyApy > 0 ? rawSupplyApy : safeApy
+  const supplyApy = hasVaultOverview && Number.isFinite(rawSupplyApy) ? rawSupplyApy : safeApy
   const rawAvg90 = Number(vaultOverview?.supplyApy90dAvg)
-  const avgApy90d = Number.isFinite(rawAvg90) && rawAvg90 > 0 ? rawAvg90 : supplyApy * 0.84
+  const avgApy90d = hasVaultOverview && Number.isFinite(rawAvg90) ? rawAvg90 : supplyApy
 
   // Chart data
   const chartData = useMemo(() => {
-    if (apiDashboard?.chartData && Array.isArray(apiDashboard.chartData) && apiDashboard.chartData.length >= 2) {
-      return apiDashboard.chartData.map((pt) => {
+    if (apiDashboard?.chartData && Array.isArray(apiDashboard.chartData)) {
+      const valid = apiDashboard.chartData
+        .map((point) => ({ ...point, time: new Date(point.timestamp).getTime() }))
+        .filter((point) => Number.isFinite(point.time))
+        .sort((a, b) => a.time - b.time)
+      const latest = valid.at(-1)?.time
+      const cutoff = latest === undefined ? 0 : latest - timeframe * 24 * 60 * 60 * 1000
+      return valid.filter((point) => point.time >= cutoff).map((pt) => {
         const d = new Date(pt.timestamp)
         return {
           date: isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          apy: Number.isFinite(Number(pt.supplyApy)) ? Number(pt.supplyApy) : supplyApy,
-          tvl: Number.isFinite(Number(pt.totalSupply)) ? Number(pt.totalSupply) : safeTvlRaw,
+          apy: Number.isFinite(Number(pt.supplyApy)) ? Number(pt.supplyApy) : 0,
+          tvl: Number.isFinite(Number(pt.totalSupply)) ? Number(pt.totalSupply) : 0,
         }
       })
     }
-    return generateMockChartData(supplyApy, safeTvlRaw, timeframe)
-  }, [apiDashboard, supplyApy, safeTvlRaw, timeframe])
+    return []
+  }, [apiDashboard, timeframe])
+
+  const positionChartData = useMemo(() => buildPositionMetricSeries({
+    currentInterestUsd: safeEarnedUsd,
+    currentValueUsd: suppliedUsdValue,
+    days: positionTimeframe,
+    metric: positionChartMetric,
+    snapshots: apiDashboard?.chartData ?? [],
+  }), [apiDashboard?.chartData, positionChartMetric, positionTimeframe, safeEarnedUsd, suppliedUsdValue])
+
+  const recordPosition = (position: Omit<LocalPosition, 'id'>) => {
+    setOptimisticPosition({
+      ...position,
+      id: `confirmed-${position.hash || pool.id}`,
+    })
+    onPositionAdded(position)
+  }
 
   const handleDeposit = async () => {
     setTxMessage(null)
@@ -644,7 +663,7 @@ export function PoolDetailsView({
 
       setTxState('submitted')
       setTxHash(result.hash)
-      onPositionAdded({
+      recordPosition({
         amount: Number.isFinite(Number(amount)) ? Number(amount) : 0,
         asset: pool.asset || 'XLM',
         hash: result.hash || 'tx_hash',
@@ -656,6 +675,7 @@ export function PoolDetailsView({
         category: pool.category || 'AMM LP',
         poolId: pool.id,
       })
+      selectPageTab('position')
     } catch (error) {
       setTxState('error')
       setTxMessage(error instanceof Error ? error.message : 'Transaction failed.')
@@ -751,7 +771,7 @@ export function PoolDetailsView({
       {/* ── Tabs (Vault Overview | My Position) ── */}
       <div className="mb-6 flex gap-8 border-b border-white/[0.08]">
         <button
-          onClick={() => setActivePageTab('overview')}
+          onClick={() => selectPageTab('overview')}
           className={`relative pb-3 text-sm font-semibold transition ${activePageTab === 'overview'
               ? 'text-white'
               : 'text-[#9CA3AF] hover:text-white'
@@ -765,7 +785,7 @@ export function PoolDetailsView({
         </button>
 
         <button
-          onClick={() => setActivePageTab('position')}
+          onClick={() => selectPageTab('position')}
           className={`relative pb-3 text-sm font-semibold transition ${activePageTab === 'position'
               ? 'text-white'
               : 'text-[#9CA3AF] hover:text-white'
@@ -773,9 +793,9 @@ export function PoolDetailsView({
           type="button"
         >
           My Position
-          {userPositions.length > 0 && (
+          {visiblePositions.length > 0 && (
             <span className="ml-2 rounded-full bg-[#16A34A]/20 px-2 py-0.5 text-xs font-bold text-[#16A34A]">
-              {userPositions.length}
+              {visiblePositions.length}
             </span>
           )}
           {activePageTab === 'position' && (
@@ -816,7 +836,7 @@ export function PoolDetailsView({
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
             <p className="font-mono text-xl font-extrabold text-white sm:text-2xl">
-              {suppliedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+              {displayedShares.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
               <span className="ml-1 text-xs font-normal text-[#9CA3AF]">{pool.asset}</span>
             </p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Staked Shares</p>
@@ -826,11 +846,11 @@ export function PoolDetailsView({
             <p className="mt-1 text-xs text-[#9CA3AF]">Interest Earned</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">+${(suppliedUsdValue * (safeApy / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">+${(suppliedUsdValue * (supplyApy / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Daily Interest</p>
           </div>
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-[#F2C12E] sm:text-2xl">{safeApy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</p>
+            <p className="font-mono text-xl font-extrabold text-[#F2C12E] sm:text-2xl">{supplyApy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Current APY</p>
           </div>
         </div>
@@ -842,50 +862,83 @@ export function PoolDetailsView({
         <div className="space-y-6">
           {activePageTab === 'overview' ? (
             <>
-              {/* On-Chain Trust Score & Voting Card */}
+              {/* Vault profile and on-chain voting */}
               <div className="rounded-2xl border border-[#F2C12E]/30 bg-[#161622] p-6 shadow-lg">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-bold text-white">Trust Score & On-Chain Governance</h2>
-                      <span className="rounded-md bg-[#16A34A]/20 px-2.5 py-0.5 text-xs font-bold text-[#16A34A]">
-                        {riskState.status === 'success' ? `${riskState.data.compositeScore}/100 · ${riskState.data.riskLevel}` : '90/100 · TRUSTED'}
-                      </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-base font-bold text-white">Vault Profile & On-Chain Votes</h2>
+                      {riskState.status === 'success' ? (
+                        <span className="rounded-md bg-[#16A34A]/20 px-2.5 py-0.5 text-xs font-bold text-[#16A34A]">
+                          {riskState.data.compositeScore}/100 · {riskState.data.riskLevel}
+                        </span>
+                      ) : (
+                        <span className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-xs font-medium text-[#9CA3AF]">
+                          Risk data unavailable
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1.5 text-xs text-[#9CA3AF]">
-                      Per the Soroban smart contract, only users with an active open position in this vault can vote on its Trust Score.
+                      {myPosition
+                        ? 'Your active position is eligible to vote. Totals are read directly from the Soroban contract.'
+                        : 'Open and keep an active position in this vault to vote. Contract totals remain public.'}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <button
                       type="button"
-                      disabled={voting}
+                      aria-label={`Vote trusted. Current on-chain votes: ${trustedVotes}`}
+                      disabled={voteControlsDisabled}
                       onClick={() => handleTrustVote(true)}
-                      className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition ${
+                      className={`flex h-10 items-center gap-2 rounded-lg border px-3.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
                         userVote === 'up'
-                          ? 'border-[#16A34A] bg-[#16A34A]/20 text-[#16A34A] shadow-[0_0_14px_rgba(22,163,74,0.3)]'
+                          ? 'border-[#16A34A] bg-[#16A34A]/20 text-[#16A34A]'
                           : 'border-white/[0.12] bg-white/[0.06] text-[#F0F0F0] hover:border-[#16A34A]/40 hover:bg-[#16A34A]/10 hover:text-[#16A34A]'
                       }`}
                     >
-                      <span className="text-sm">👍</span>
-                      <span>Trusted ({upvotes})</span>
+                      <ThumbsUp className="size-4" aria-hidden="true" />
+                      <span>Trusted</span>
+                      <span className="min-w-5 text-right font-mono tabular-nums">{trustedVotes}</span>
                     </button>
                     <button
                       type="button"
-                      disabled={voting}
+                      aria-label={`Vote risky. Current on-chain votes: ${riskyVotes}`}
+                      disabled={voteControlsDisabled}
                       onClick={() => handleTrustVote(false)}
-                      className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition ${
+                      className={`flex h-10 items-center gap-2 rounded-lg border px-3.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
                         userVote === 'down'
-                          ? 'border-red-400 bg-red-400/20 text-red-400 shadow-[0_0_14px_rgba(248,113,113,0.3)]'
+                          ? 'border-red-400 bg-red-400/20 text-red-400'
                           : 'border-white/[0.12] bg-white/[0.06] text-[#F0F0F0] hover:border-red-400/40 hover:bg-red-400/10 hover:text-red-400'
                       }`}
                     >
-                      <span className="text-sm">👎</span>
-                      <span>Risky ({downvotes})</span>
+                      <ThumbsDown className="size-4" aria-hidden="true" />
+                      <span>Risky</span>
+                      <span className="min-w-5 text-right font-mono tabular-nums">{riskyVotes}</span>
                     </button>
                   </div>
                 </div>
+
+                {(!myPosition || !canSign || voteScoreStatus !== 'ready') && (
+                  <div className="mt-4 flex min-h-8 items-center justify-between gap-3 border-t border-white/[0.07] pt-4 text-xs">
+                    <span className="flex items-center gap-2 text-[#8793A5]">
+                      {!myPosition && <LockKeyhole className="size-3.5" aria-hidden="true" />}
+                      {!myPosition
+                        ? 'Voting locked until this wallet has an active position.'
+                        : !canSign
+                          ? 'Connect a Testnet wallet to vote.'
+                          : voteScoreStatus === 'loading'
+                            ? 'Reading vote totals from Soroban...'
+                            : 'On-chain vote totals are currently unavailable.'}
+                    </span>
+                    {voteScoreStatus === 'unavailable' && (
+                      <button className="inline-flex shrink-0 items-center gap-1.5 text-[#D9B73A] hover:text-[#F2C12E]" onClick={() => void refreshOnChainVotes()} type="button">
+                        <RefreshCw className="size-3.5" aria-hidden="true" />
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {voteNotice && (
                   <div
@@ -953,7 +1006,13 @@ export function PoolDetailsView({
 
                 {/* Interactive Area Chart */}
                 <div className="h-64 w-full">
-                  <PerformanceAreaChart data={chartData} metric={chartMetric} />
+                  {dashboardState.status === 'loading' || dashboardState.status === 'idle' ? (
+                    <div className="flex size-full items-center justify-center text-sm text-[#7D899A]">Loading pool snapshots...</div>
+                  ) : chartData.length > 0 ? (
+                    <PerformanceAreaChart data={chartData} metric={chartMetric} />
+                  ) : (
+                    <div className="flex size-full items-center justify-center text-sm text-[#7D899A]">No historical pool snapshots are available.</div>
+                  )}
                 </div>
               </div>
 
@@ -1023,29 +1082,50 @@ export function PoolDetailsView({
                   {/* Performance Chart */}
                   <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-6">
                     <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
-                      <div className="flex items-center gap-6">
-                        <span className="border-b-2 border-[#3B82F6] pb-2 text-sm font-bold text-white">Position Value</span>
-                        <span className="pb-2 text-sm font-medium text-[#9CA3AF]">Interest Earned</span>
-                        <span className="pb-2 text-sm font-medium text-[#9CA3AF]">Avg APY</span>
+                      <div className="flex items-center gap-5" role="tablist" aria-label="Position chart metric">
+                        {([
+                          { id: 'value' as const, label: 'Position Value' },
+                          { id: 'interest' as const, label: 'Interest Earned' },
+                          { id: 'apy' as const, label: 'Avg APY' },
+                        ]).map((metric) => (
+                          <button
+                            aria-selected={positionChartMetric === metric.id}
+                            className={`pb-2 text-sm font-semibold transition ${positionChartMetric === metric.id ? 'border-b-2 border-[#3B82F6] text-white' : 'text-[#9CA3AF] hover:text-white'}`}
+                            key={metric.id}
+                            onClick={() => setPositionChartMetric(metric.id)}
+                            role="tab"
+                            type="button"
+                          >
+                            {metric.label}
+                          </button>
+                        ))}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="rounded-lg bg-[#3B82F6] px-2.5 py-1 text-xs font-bold text-white">USD</span>
-                        <span className="rounded-lg bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-[#9CA3AF]">7D</span>
-                        <span className="rounded-lg bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-[#9CA3AF]">30D</span>
+                        <span className="rounded-lg bg-[#3B82F6] px-2.5 py-1 text-xs font-bold text-white">{positionChartMetric === 'apy' ? '%' : 'USD'}</span>
+                        {([7, 30] as const).map((days) => (
+                          <button
+                            className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${positionTimeframe === days ? 'bg-white/[0.1] text-white' : 'bg-white/[0.04] text-[#9CA3AF] hover:text-white'}`}
+                            key={days}
+                            onClick={() => setPositionTimeframe(days)}
+                            type="button"
+                          >
+                            {days}D
+                          </button>
+                        ))}
                       </div>
                     </div>
 
                     <div className="h-64 w-full">
-                      <svg className="size-full overflow-visible" viewBox="0 0 500 180">
-                        <defs>
-                          <linearGradient id={`pos-gradient-${pool.id}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.4" />
-                            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M 0,160 L 0,140 L 500,40 L 500,160 Z" fill={`url(#pos-gradient-${pool.id})`} />
-                        <path d="M 0,140 L 500,40" fill="none" stroke="#3B82F6" strokeWidth="2.5" />
-                      </svg>
+                      {dashboardState.status === 'loading' || dashboardState.status === 'idle' ? (
+                        <div className="flex size-full items-center justify-center text-sm text-[#7D899A]">Loading position snapshots...</div>
+                      ) : positionChartData.length > 0 ? (
+                        <PositionMetricChart data={positionChartData} metric={positionChartMetric} />
+                      ) : (
+                        <div className="flex size-full flex-col items-center justify-center gap-1 text-center">
+                          <p className="text-sm text-[#A5B1C2]">No historical position data yet</p>
+                          <p className="text-xs text-[#657284]">The chart will appear after the pool dashboard records snapshots.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1081,6 +1161,9 @@ export function PoolDetailsView({
                         </div>
 
                         <div className="space-y-3 pt-3">
+                          {!historyLoading && historyItems.length === 0 && (
+                            <div className="py-8 text-center text-sm text-[#7D899A]">No transactions were returned for this pool.</div>
+                          )}
                           {historyItems.map((item, idx) => {
                             const rawTypeStr = String(item.type || item.action || 'deposit').toUpperCase()
                             const isWithdrawTx =
@@ -1094,7 +1177,7 @@ export function PoolDetailsView({
 
                             const labelType = isWithdrawTx ? 'Withdraw' : 'Deposit'
 
-                            let dateStr = 'Jul 15, 2026 17:35'
+                            let dateStr = 'Unknown'
                             const rawDateVal = item.timestamp || item.createdAt || item.date || item.updatedAt || item.time
                             if (rawDateVal) {
                               const d = new Date(rawDateVal as string | number | Date)
@@ -1153,9 +1236,7 @@ export function PoolDetailsView({
                               txHash = item.id
                             }
 
-                            const explorerUrl = txHash
-                              ? `https://stellar.expert/explorer/testnet/tx/${txHash}`
-                              : `https://stellar.expert/explorer/testnet/contract/${pool.contractId || pool.id}`
+                            const explorerUrl = txHash ? `https://stellar.expert/explorer/testnet/tx/${txHash}` : null
 
                             return (
                               <div
@@ -1186,15 +1267,19 @@ export function PoolDetailsView({
                                 <span className="text-sm font-bold text-white whitespace-nowrap">{valUsd}</span>
 
                                 <div className="flex justify-end">
-                                  <a
-                                    href={explorerUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-lg font-bold text-[#60A5FA] hover:text-white transition transform hover:scale-110 flex items-center justify-center size-8 rounded-lg hover:bg-white/[0.08]"
-                                    title="View transaction on Stellar Explorer"
-                                  >
-                                    ↗
-                                  </a>
+                                  {explorerUrl ? (
+                                    <a
+                                      href={explorerUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-lg font-bold text-[#60A5FA] hover:text-white transition transform hover:scale-110 flex items-center justify-center size-8 rounded-lg hover:bg-white/[0.08]"
+                                      title="View transaction on Stellar Explorer"
+                                    >
+                                      ↗
+                                    </a>
+                                  ) : (
+                                    <span className="text-[#657284]">--</span>
+                                  )}
                                 </div>
                               </div>
                             )
@@ -1241,7 +1326,8 @@ export function PoolDetailsView({
               <SingleAssetDepositPanel
                 canSign={canSign}
                 networkUrl={networkUrl}
-                onPositionAdded={onPositionAdded}
+                onPositionAdded={recordPosition}
+                onConfirmed={() => selectPageTab('position')}
                 pool={pool}
                 publicKey={publicKey}
               />
@@ -1338,11 +1424,6 @@ export function PoolDetailsView({
                     : `Deposit ${amount > 0 ? amount : ''} ${pool.asset}`}
               </button>
 
-              <div className="mt-5 flex items-center justify-between border-t border-white/[0.06] pt-4 text-xs text-[#9CA3AF]">
-                <span>Transaction Settings</span>
-                <span className="cursor-pointer hover:text-white">⚙</span>
-              </div>
-
               {txMessage && txState === 'error' && (
                 <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
                   {txMessage}
@@ -1350,25 +1431,7 @@ export function PoolDetailsView({
               )}
 
               {txState === 'submitted' && txHash && (
-                <div className="mt-4 rounded-xl border border-[#16A34A]/30 bg-[#16A34A]/10 p-4">
-                  <div className="flex items-start gap-3">
-                    <svg className="size-5 shrink-0 text-[#16A34A]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-[#16A34A]">Deposit Confirmed</p>
-                      <p className="mt-0.5 text-xs text-[#9CA3AF]">Position added to your portfolio.</p>
-                      <a
-                        className="mt-2.5 block truncate rounded-lg border border-[#16A34A]/20 bg-white/[0.04] px-3 py-1.5 font-mono text-xs text-white hover:border-[#16A34A]/40"
-                        href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {txHash}
-                      </a>
-                    </div>
-                  </div>
-                </div>
+                <TransactionReceipt hash={txHash} />
               )}
             </>
           ) : (
@@ -1453,11 +1516,6 @@ export function PoolDetailsView({
                     ? 'Waiting for Freighter…'
                     : `Withdraw ${withdrawAmount > 0 ? withdrawAmount : ''} ${pool.asset}`}
               </button>
-
-              <div className="mt-5 flex items-center justify-between border-t border-white/[0.06] pt-4 text-xs text-[#9CA3AF]">
-                <span>Transaction Settings</span>
-                <span className="cursor-pointer hover:text-white">⚙</span>
-              </div>
 
               {withdrawTxState === 'error' && withdrawTxMessage && (
                 <p className="mt-4 break-words rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">

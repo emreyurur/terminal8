@@ -78,6 +78,10 @@ export type LocalPosition = {
   apy: number
   category: 'Lending' | 'AMM LP' | 'AMM Rewards'
   poolId: string
+  /** Current values returned by the portfolio API when available. */
+  currentValueUsd?: number
+  pnlUsd?: number
+  sharesOwned?: number
 }
 
 export type DeFiPool = {

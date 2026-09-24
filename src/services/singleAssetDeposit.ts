@@ -43,6 +43,10 @@ async function errorText(res: Response): Promise<string> {
 }
 
 async function requestBuild(params: SingleAssetParams, jwt: string): Promise<Response> {
+  if (!params.poolId.trim()) throw new Error('Pool ID is required.')
+  if (!params.sourceAsset.trim()) throw new Error('Source asset is required.')
+  if (!Number.isFinite(params.amount) || params.amount <= 0) throw new Error('Amount must be greater than zero.')
+  if (!Number.isFinite(params.slippageBps) || params.slippageBps < 0) throw new Error('Slippage must be zero or greater.')
   return fetch(`${API_BASE}api/v1/transactions/single-asset-deposit`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },

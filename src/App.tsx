@@ -13,15 +13,17 @@ import { WalletProvider } from './context/WalletContext'
 import { useWallet } from './context/useWallet'
 import { useWalletBalances } from './hooks/useWalletBalances'
 import { useAlertNotifications } from './hooks/useAlertNotifications'
+import { usePools } from './hooks/usePools'
+import { buildAppPath, getRouteMetadata, parseAppRoute, type AppPage, type AppRoute } from './lib/appRoutes'
 import { addPosition, mergePositionsByPool } from './lib/positions'
 import { recoverLpPositions } from './services/positionRecovery'
 import type { LocalPosition, RiskProfile, WalletBalance } from './types/stellar'
 
-export type AppPage = 'landing' | 'home' | 'docs' | 'tester'
+export type { AppPage } from './lib/appRoutes'
 
 const initialLines: TerminalLine[] = [
-  { id: 'boot-1', kind: 'log', text: 'Soroban RPC ready. Type help for commands.' },
-  { id: 'boot-2', kind: 'log', text: 'positions - withdraw <n> --full - pools - balance' },
+  { id: 'boot-1', kind: 'log', text: 'Terminal8 wallet session ready. Type help for commands.' },
+  { id: 'boot-2', kind: 'log', text: 'positions - deposit - withdraw - balance - network' },
 ]
 
 function getBestTokenBalance(balances: WalletBalance[], code: string): number {
@@ -55,43 +57,64 @@ function savePositionsToStorage(positions: LocalPosition[], pubKey?: string | nu
   }
 }
 
-const ACTIVE_PAGE_STORAGE_KEY = 'terminal8_active_page'
-
-function getStoredActivePage(): AppPage {
-  try {
-    const saved = localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY)
-    if (saved === 'alerts') return 'home'
-    if (saved && ['landing', 'home', 'docs', 'tester'].includes(saved)) {
-      return saved as AppPage
-    }
-  } catch {
-    /* ignore */
-  }
-  return 'landing'
-}
-
 function AppInner() {
   const { networkPassphrase, networkUrl, publicKey, status } = useWallet()
   const { balances, refreshBalances } = useWalletBalances()
 
-  const [activePageRaw, setActivePageRaw] = useState<AppPage>(() => getStoredActivePage())
+  const [route, setRoute] = useState<AppRoute>(() => parseAppRoute(window.location.pathname))
 
-  const setActivePage = useCallback((page: AppPage) => {
-    setActivePageRaw(page)
-    try {
-      localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, page)
-    } catch {
-      /* ignore */
+  const navigate = useCallback((nextRoute: AppRoute, replace = false) => {
+    const path = buildAppPath(nextRoute)
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== path) {
+      window.history[replace ? 'replaceState' : 'pushState']({}, '', path)
     }
+    setRoute(nextRoute)
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }, [])
 
-  const activePage = activePageRaw
+  const setActivePage = useCallback((page: AppPage) => {
+    navigate({ page })
+  }, [navigate])
+
+  useEffect(() => {
+    const handlePopState = () => setRoute(parseAppRoute(window.location.pathname))
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const canonicalPath = buildAppPath(route)
+    if (window.location.pathname !== canonicalPath) {
+      window.history.replaceState({}, '', canonicalPath)
+    }
+
+    const metadata = getRouteMetadata(route)
+    document.title = metadata.title
+
+    let description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
+    if (!description) {
+      description = document.createElement('meta')
+      description.name = 'description'
+      document.head.appendChild(description)
+    }
+    description.content = metadata.description
+
+    let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')
+    if (!canonical) {
+      canonical = document.createElement('link')
+      canonical.rel = 'canonical'
+      document.head.appendChild(canonical)
+    }
+    canonical.href = `${window.location.origin}${canonicalPath}`
+  }, [route])
+
+  const activePage = route.page
   const [notificationPanel, setNotificationPanel] = useState<{ scope: string; notification?: AlertNotification } | null>(null)
   const notificationScope = `${status}:${publicKey}:${networkPassphrase}`
   const openNotifications = useCallback((notification?: AlertNotification) => {
     setNotificationPanel({ scope: notificationScope, notification })
-    if (activePageRaw === 'landing') setActivePage('home')
-  }, [notificationScope, activePageRaw, setActivePage])
+    if (route.page === 'landing') setActivePage('home')
+  }, [notificationScope, route.page, setActivePage])
   const alertsModel = useAlertNotifications(
     status === 'CONNECTED' ? publicKey : null,
     openNotifications,
@@ -195,19 +218,26 @@ function AppInner() {
 
   const xlmBalance = getBestTokenBalance(balances, 'XLM')
   const usdcBalance = getBestTokenBalance(balances, 'USDC')
+  const terminalPoolsState = usePools(publicKey)
+  const terminalPools = useMemo(
+    () => terminalPoolsState.status === 'success' ? terminalPoolsState.pools : [],
+    [terminalPoolsState],
+  )
 
   const commandContext = useMemo<CommandContext>(
     () => ({
       networkPassphrase,
       networkUrl,
+      pools: terminalPools,
       positions: localPositions,
       publicKey,
       status,
       xlmBalance,
       usdcBalance,
+      onPositionAdded: handlePositionAdded,
       onWithdrawn: handleWithdrawn,
     }),
-    [networkPassphrase, networkUrl, localPositions, publicKey, status, xlmBalance, usdcBalance, handleWithdrawn],
+    [networkPassphrase, networkUrl, terminalPools, localPositions, publicKey, status, xlmBalance, usdcBalance, handlePositionAdded, handleWithdrawn],
   )
 
   const handleLaunchApp = () => {
@@ -252,6 +282,11 @@ function AppInner() {
               onWithdrawn={handleWithdrawn}
               positions={localPositions}
               riskProfile={riskProfile}
+              routeDetailTab={route.detailTab ?? 'overview'}
+              routePoolId={route.poolId ?? null}
+              onDetailRouteChange={(poolId, detailTab) => {
+                navigate(poolId ? { page: 'home', poolId, detailTab } : { page: 'home' })
+              }}
               usdcBalance={usdcBalance}
               xlmBalance={xlmBalance}
             />
@@ -259,7 +294,7 @@ function AppInner() {
         ) : activePage === 'tester' ? (
           <ApiTesterView />
         ) : (
-          <DocsPage />
+          <DocsPage onOpenDashboard={() => setActivePage('home')} />
         )}
       </main>
 
@@ -274,7 +309,9 @@ function AppInner() {
       )}
 
       <CommandPalette
+        commandContext={commandContext}
         lines={terminalLines}
+        onClear={() => setTerminalLines([])}
         onClose={() => setPaletteOpen(false)}
         onSubmitLines={appendLines}
         open={paletteOpen}

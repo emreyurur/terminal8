@@ -64,7 +64,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_BASE}api/v1/alerts${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}`, ...init.headers },
+    headers: {
+      Accept: 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${jwt}`,
+      ...init.headers,
+    },
   })
   if (res.status === 401) {
     if (getStoredJwtToken() === jwt) clearStoredJwtToken()
@@ -85,18 +90,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) })
+const query = (values: Record<string, string | boolean>) => {
+  const params = new URLSearchParams()
+  Object.entries(values).forEach(([key, value]) => params.set(key, String(value)))
+  return params.toString()
+}
 
 export const fetchAlertsConfig = () => request<AlertsConfig>('/config')
 export const fetchAlerts = () => request<PriceAlert[]>('')
 export const createAlert = (input: CreateAlertInput) => request<PriceAlert>('', { method: 'POST', ...json(input) })
 export const updateAlert = (id: string, input: UpdateAlertInput) =>
-  request<PriceAlert>(`/${id}`, { method: 'PATCH', ...json(input) })
-export const deleteAlert = (id: string) => request<{ deleted: boolean }>(`/${id}`, { method: 'DELETE' })
+  request<PriceAlert>(`/${encodeURIComponent(id)}`, { method: 'PATCH', ...json(input) })
+export const deleteAlert = (id: string) => request<{ deleted: boolean }>(`/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const fetchNotifications = (unreadOnly = false) =>
-  request<AlertNotification[]>(`/notifications${unreadOnly ? '?unread=true' : ''}`)
+  request<AlertNotification[]>(`/notifications?${query({ unread: unreadOnly })}`)
 export const markNotificationsRead = (ids?: number[]) =>
-  request<{ updated: number }>('/notifications/read', { method: 'POST', ...json({ ids }) })
+  request<{ updated: number }>('/notifications/read', { method: 'POST', ...json(ids ? { ids } : {}) })
 export const fetchCurrentValue = (poolId: string, metric: AlertMetric, quoteSide: QuoteSide) =>
   request<{ value: number | null; codeA: string; codeB: string }>(
-    `/current?poolId=${poolId}&metric=${metric}&quoteSide=${quoteSide}`,
+    `/current?${query({ poolId, metric, quoteSide })}`,
   )

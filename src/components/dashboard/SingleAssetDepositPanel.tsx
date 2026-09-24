@@ -9,6 +9,7 @@ import {
 } from '../../services/singleAssetDeposit'
 import type { FreighterSignFn } from '../../services/terminal8Api'
 import type { DeFiPool, LocalPosition } from '../../types/stellar'
+import { TransactionReceipt } from './TransactionReceipt'
 
 const SLIPPAGE_OPTIONS = [50, 100, 200] as const
 
@@ -30,13 +31,14 @@ type Props = {
   networkUrl: string | null
   canSign: boolean
   onPositionAdded: (pos: Omit<LocalPosition, 'id'>) => void
+  onConfirmed?: () => void
 }
 
 /**
  * Deposit with only one of the pool's assets: the backend works out how much to swap, and one
  * transaction (trustlines, swap, deposit) is signed once.
  */
-export function SingleAssetDepositPanel({ pool, publicKey, networkUrl, canSign, onPositionAdded }: Props) {
+export function SingleAssetDepositPanel({ pool, publicKey, networkUrl, canSign, onPositionAdded, onConfirmed }: Props) {
   const { sides, loading, error, refresh } = useSingleAssetSides(pool.id, publicKey, networkUrl)
 
   const [sourceKey, setSourceKey] = useState<string | null>(null)
@@ -84,8 +86,9 @@ export function SingleAssetDepositPanel({ pool, publicKey, networkUrl, canSign, 
     try {
       const { hash } = await submitSingleAssetDeposit(publicKey, sign, built, pool.id)
       setTxHash(hash)
+      const planAmount = positionAmountFromPlan(built.plan, pool.asset)
       onPositionAdded({
-        amount: positionAmountFromPlan(built.plan, pool.asset),
+        amount: planAmount > 0 ? planAmount : amountNum,
         asset: pool.asset || 'XLM',
         hash,
         protocol: pool.protocol || 'Soroswap AMM',
@@ -96,6 +99,7 @@ export function SingleAssetDepositPanel({ pool, publicKey, networkUrl, canSign, 
         category: pool.category || 'AMM LP',
         poolId: pool.id,
       })
+      onConfirmed?.()
       setBuilt(null)
       setAmount('')
       refresh()
@@ -213,17 +217,7 @@ export function SingleAssetDepositPanel({ pool, publicKey, networkUrl, canSign, 
       {message && <p className="break-words rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{message}</p>}
 
       {txHash && (
-        <div className="rounded-xl border border-[#16A34A]/30 bg-[#16A34A]/10 p-4 text-xs">
-          <p className="font-semibold text-[#16A34A]">Deposit confirmed</p>
-          <a
-            className="mt-2 block truncate rounded-lg border border-[#16A34A]/20 bg-white/[0.04] px-3 py-1.5 font-mono text-white hover:border-[#16A34A]/40"
-            href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {txHash}
-          </a>
-        </div>
+        <TransactionReceipt hash={txHash} />
       )}
 
       {!plan ? (

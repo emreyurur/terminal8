@@ -49,5 +49,13 @@ export function positionAmountFromPlan(
   plan: { sourceAsset: string; destAsset: string; expectedDepositSource: number; expectedDepositDest: number },
   primaryAsset: string,
 ): number {
-  return plan.sourceAsset === primaryAsset ? plan.expectedDepositSource : plan.expectedDepositDest
+  const assetCode = (asset: string) => {
+    const code = asset.toLowerCase() === 'native' ? 'XLM' : asset.split(':')[0]
+    return code.toUpperCase()
+  }
+  const amount = assetCode(plan.sourceAsset) === assetCode(primaryAsset)
+    ? plan.expectedDepositSource
+    : plan.expectedDepositDest
+  const numericAmount = Number(amount)
+  return Number.isFinite(numericAmount) && numericAmount > 0 ? numericAmount : 0
 }

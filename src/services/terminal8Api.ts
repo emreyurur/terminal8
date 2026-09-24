@@ -130,6 +130,27 @@ export async function signToString(
   return signed
 }
 
+type BuildTransactionDto = {
+  poolId: string
+  action: 'DEPOSIT' | 'WITHDRAW'
+  amountA: number
+  amountB: number
+  shareAmount: number
+  slippageBps?: number
+}
+
+function toBuildTransactionDto(params: BuildTransactionParams): BuildTransactionDto {
+  const deposit = params.action === 'DEPOSIT'
+  return {
+    poolId: params.poolId,
+    action: params.action,
+    amountA: deposit ? Number(params.amountA ?? 0) : 0,
+    amountB: deposit ? Number(params.amountB ?? 0) : 0,
+    shareAmount: deposit ? 0 : Number(params.shareAmount ?? 0),
+    ...(params.slippageBps === undefined ? {} : { slippageBps: Number(params.slippageBps) }),
+  }
+}
+
 async function normalizeSignedXdr(
   signFn: FreighterSignFn,
   xdr: string,
@@ -195,7 +216,7 @@ export async function buildTransactionFromApi(
       Authorization: `Bearer ${jwt}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(toBuildTransactionDto(params)),
   })
   if (!res.ok) {
     const errorText = await res.text()
@@ -224,21 +245,15 @@ export async function executeApiPoolTransaction({
     jwt = await loginWithFreighterFlow(publicKey, signTransactionFn)
   }
 
-  const enrichedParams: BuildTransactionParams = {
-    ...params,
-    userAddress: publicKey,
-    publicKey,
-  }
-
   let buildRes: BuildTransactionResponse
   try {
-    buildRes = await buildTransactionFromApi(enrichedParams, jwt)
+    buildRes = await buildTransactionFromApi(params, jwt)
   } catch (err: unknown) {
     // If 401 Unauthorized or token expired, re-login once and retry
     if (err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))) {
       clearStoredJwtToken()
       jwt = await loginWithFreighterFlow(publicKey, signTransactionFn)
-      buildRes = await buildTransactionFromApi(enrichedParams, jwt)
+      buildRes = await buildTransactionFromApi(params, jwt)
     } else {
       throw err
     }
@@ -248,7 +263,7 @@ export async function executeApiPoolTransaction({
     throw new Error('No XDR returned from transaction build API.')
   }
 
-  const networkPassphrase = buildRes.networkPassphrase || 'Test SDF Network ; September 2015'
+  let networkPassphrase = buildRes.networkPassphrase || 'Test SDF Network ; September 2015'
   let signedXdr = await normalizeSignedXdr(signTransactionFn, buildRes.xdr, networkPassphrase, publicKey)
   let submitRes: HorizonSubmitResponse | undefined
 
@@ -259,7 +274,8 @@ export async function executeApiPoolTransaction({
     if (errStr.includes('tx_bad_auth') || errStr.includes('bad_auth') || errStr.includes('401')) {
       clearStoredJwtToken()
       jwt = await loginWithFreighterFlow(publicKey, signTransactionFn)
-      buildRes = await buildTransactionFromApi(enrichedParams, jwt)
+      buildRes = await buildTransactionFromApi(params, jwt)
+      networkPassphrase = buildRes.networkPassphrase || 'Test SDF Network ; September 2015'
       signedXdr = await normalizeSignedXdr(signTransactionFn, buildRes.xdr, networkPassphrase, publicKey)
       submitRes = await submitToHorizon(signedXdr)
     } else {
@@ -405,6 +421,7 @@ export interface PortfolioPositionsResponse {
   positions: Array<{
     poolId?: string
     asset?: string
+    sharesOwned?: number | string
     shares?: number | string
     amount?: number | string
     valueUsd?: number

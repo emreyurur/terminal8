@@ -71,7 +71,8 @@ export function AlertForm({ alert, positions, emailEnabled, onSaved, onDirty, on
   }
 
   return (
-    <form onSubmit={save} className="space-y-5" noValidate>
+    <form onSubmit={save} className="flex min-h-0 flex-1 flex-col" noValidate>
+      <div className="notification-form-scroll min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5">
       {error && <p role="alert" className="rounded-lg bg-red-400/10 p-3 text-sm text-red-300">{error}</p>}
       <label className={label}>Pool
         <select className={field} disabled={!!alert || manual} value={manual ? '' : draft.poolId} onChange={e => change({ poolId: e.target.value })}>
@@ -103,7 +104,7 @@ export function AlertForm({ alert, positions, emailEnabled, onSaved, onDirty, on
         </label>}
       </div>
       <label className={label}>Threshold {draft.metric === 'IMPERMANENT_LOSS_PCT' ? '(%)' : codes ? `(${draft.quoteSide === 'A' ? codes.codeA : codes.codeB})` : ''}
-        <input className={field} inputMode="decimal" type="number" min="0" step="any" value={threshold} onChange={e => { setThreshold(e.target.value); onDirty(true) }} placeholder="0.00" aria-invalid={attempted && !!thresholdError} />
+        <input className={field} inputMode="decimal" type="text" value={threshold} onChange={e => { setThreshold(e.target.value); onDirty(true) }} placeholder="0.00" aria-invalid={attempted && !!thresholdError} />
       </label>
       {attempted && thresholdError && <p role="alert" className="text-xs text-red-300">{thresholdError}</p>}
       <p className="text-xs text-zinc-400" aria-live="polite">{currentError?.key === key ? currentError.message : now ? now.value === null ? 'No current value available.' : `Current value: ${formatNumber(now.value)} ${draft.metric === 'IMPERMANENT_LOSS_PCT' ? '%' : draft.quoteSide === 'A' ? now.codeA : now.codeB}` : isValidPoolId(draft.poolId) ? 'Checking current value...' : ''}</p>
@@ -125,7 +126,8 @@ export function AlertForm({ alert, positions, emailEnabled, onSaved, onDirty, on
         {draft.notifyEmail && <label className={label}>Email address<input className={field} type="email" value={draft.email ?? ''} onChange={e => change({ email: e.target.value })} placeholder="you@example.com" /></label>}
         {attempted && emailError && <p role="alert" className="text-xs text-red-300">{emailError}</p>}
       </fieldset>
-      <div className="sticky bottom-0 border-t border-white/10 bg-[#0F141C] py-4">
+      </div>
+      <div className="shrink-0 border-t border-white/10 bg-[#0F141C] px-5 py-4">
         <button className="w-full rounded-lg bg-[#F2C12E] px-4 py-3 text-sm font-semibold text-black hover:bg-yellow-300 disabled:opacity-50" disabled={busy || (draft.notifyEmail && !emailEnabled)} type="submit">{busy ? 'Saving...' : alert ? 'Save changes' : 'Create alert'}</button>
       </div>
     </form>
