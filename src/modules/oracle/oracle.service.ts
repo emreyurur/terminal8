@@ -206,12 +206,6 @@ export class OracleService implements OnModuleInit {
     
     if (!this.dynamicallyRequestedAssets.has(cacheKey)) {
       this.dynamicallyRequestedAssets.set(cacheKey, { code: assetCode, issuer });
-      // Don't await, just trigger a background fetch if not in cache so it's ready soon
-      this.redis.get(cacheKey).then(cached => {
-        if (!cached) {
-          this.fetchAndCacheSinglePrice({ code: assetCode, issuer }).catch(() => {});
-        }
-      });
     }
 
     const priceData = await this.redis.get<PriceData>(cacheKey);
@@ -241,11 +235,6 @@ export class OracleService implements OnModuleInit {
       
       if (!this.dynamicallyRequestedAssets.has(key)) {
         this.dynamicallyRequestedAssets.set(key, a);
-        this.redis.get(key).then(cached => {
-          if (!cached) {
-            this.fetchAndCacheSinglePrice(a).catch(() => {});
-          }
-        });
       }
     }
 
