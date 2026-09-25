@@ -97,10 +97,10 @@ export class HistoryService {
   async syncTransactions() {
     this.logger.log('Starting historical transaction sync...');
     
-    // Fetch top 50 pools + pools that active users have interacted with
+    // Fetch top 30 pools + pools that active users have interacted with
     const poolsToSyncResult = await this.dataSource.query(`
       SELECT id FROM (
-        SELECT id FROM liquidity_pools ORDER BY "totalTrustlines" DESC LIMIT 50
+        SELECT id FROM liquidity_pools ORDER BY "totalTrustlines" DESC LIMIT 30
       ) as top_pools
       UNION
       SELECT "poolId" as id FROM user_positions

@@ -31,8 +31,8 @@ export class ScoutService {
     // Sort pools by trustlines descending to categorize them
     pools.sort((a, b) => Number(b.total_trustlines) - Number(a.total_trustlines));
 
-    // Select a mix of 50 pools: 40 safe (top), 5 moderate, 5 risky
-    const safePools = pools.slice(0, 40);
+    // Select a mix of 30 pools: 20 safe (top), 5 moderate, 5 risky
+    const safePools = pools.slice(0, 20);
     const moderatePools = pools.slice(100, 105); // Arbitrary offset for moderate
     const riskyPools = pools.slice(1000, 1005); // Arbitrary offset for risky
 
