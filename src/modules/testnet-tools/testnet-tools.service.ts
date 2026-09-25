@@ -212,6 +212,8 @@ export class TestnetToolsService {
       
       if (this.historyService) {
         await this.historyService.logTransaction({
+          operationId: `mint_${response.hash}`,
+          occurredAt: new Date(),
           userPublicKey: params.destination,
           type: TransactionType.MINT,
           assetA: params.tokenCode,

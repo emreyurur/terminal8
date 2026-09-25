@@ -208,4 +208,17 @@ export class HorizonClient {
 
     return records;
   }
+
+  async fetchPoolOperations(
+    poolId: string,
+    cursor: string,
+    limit: number = 200,
+  ): Promise<{ records: any[]; hasMore: boolean }> {
+    const response = await this.axios.get(
+      `/liquidity_pools/${poolId}/operations`,
+      { params: { cursor, limit, order: "asc" } },
+    );
+    const records = response.data._embedded.records;
+    return { records, hasMore: records.length >= limit };
+  }
 }

@@ -93,12 +93,12 @@ export class PortfolioService {
           pos.sharesOwned = actualShares;
           changed = true;
         }
-        if (pos.assetADeposited !== costBasis.assetADeposited) {
-          pos.assetADeposited = costBasis.assetADeposited;
+        if (pos.assetADeposited !== costBasis.costBasisA) {
+          pos.assetADeposited = costBasis.costBasisA;
           changed = true;
         }
-        if (pos.assetBDeposited !== costBasis.assetBDeposited) {
-          pos.assetBDeposited = costBasis.assetBDeposited;
+        if (pos.assetBDeposited !== costBasis.costBasisB) {
+          pos.assetBDeposited = costBasis.costBasisB;
           changed = true;
         }
 
@@ -122,8 +122,8 @@ export class PortfolioService {
               userPublicKey: publicKey,
               poolId: onChain.liquidity_pool_id!,
               sharesOwned: onChain.balance || "0",
-              assetADeposited: costBasis.assetADeposited || "0",
-              assetBDeposited: costBasis.assetBDeposited || "0",
+              assetADeposited: costBasis.costBasisA || "0",
+              assetBDeposited: costBasis.costBasisB || "0",
               firstDepositAt: new Date(),
               lastUpdatedAt: new Date(),
             });
@@ -261,5 +261,69 @@ export class PortfolioService {
       },
       assets,
     };
+  }
+
+  async getPositionChartData(publicKey: string, poolId: string, range: string) {
+    const pool = await this.scoutService.getPool(poolId);
+    if (!pool) return { chartData: [] };
+
+    let limit = 30;
+    if (range === "7d") limit = 7;
+    else if (range === "90d") limit = 90;
+
+    const snapshots = await this.scoutService.getPoolSnapshots(poolId, limit);
+    if (!snapshots || snapshots.length === 0) return { chartData: [] };
+
+    const history = await this.historyService.getAllUserHistoryByPool(publicKey, poolId);
+
+    const chartData = [];
+    
+    for (const snapshot of snapshots) {
+      const snapshotTime = new Date(snapshot.snapshotAt).getTime();
+      
+      let costBasisA = 0;
+      let costBasisB = 0;
+      let totalShares = 0;
+
+      for (const tx of history) {
+        const txTime = new Date(tx.occurredAt).getTime();
+        if (txTime > snapshotTime) break;
+
+        const shares = parseFloat(tx.sharesAmount || '0');
+        // We only care about DEPOSIT and WITHDRAW for cost basis
+        if (tx.type === 'DEPOSIT' && shares > 0) {
+          costBasisA += parseFloat(tx.amountA || '0');
+          costBasisB += parseFloat(tx.amountB || '0');
+          totalShares += shares;
+        } else if (tx.type === 'WITHDRAW' && totalShares > 0) {
+          const remainingRatio = Math.max(0, (totalShares - shares) / totalShares);
+          costBasisA *= remainingRatio;
+          costBasisB *= remainingRatio;
+          totalShares = Math.max(0, totalShares - shares);
+        }
+      }
+
+      const totalPoolShares = parseFloat(snapshot.totalShares || '0');
+      const shareRatio = totalPoolShares > 0 ? totalShares / totalPoolShares : 0;
+
+      const priceA = parseFloat(snapshot.priceAUsd || '0');
+      const priceB = parseFloat(snapshot.priceBUsd || '0');
+      
+      const reserveA = parseFloat(snapshot.reserveA || '0');
+      const reserveB = parseFloat(snapshot.reserveB || '0');
+
+      const positionValueUsd = (reserveA * priceA + reserveB * priceB) * shareRatio;
+      const costBasisUsd = (costBasisA * priceA) + (costBasisB * priceB);
+      
+      const interestEarnedUsd = positionValueUsd - costBasisUsd;
+
+      chartData.push({
+        date: snapshot.snapshotAt.toISOString().split('T')[0],
+        positionValueUsd,
+        interestEarnedUsd
+      });
+    }
+
+    return { chartData };
   }
 }

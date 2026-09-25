@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from "@nestjs/common";
+import { Controller, Get, Post, Body, Param, UseGuards, Query } from "@nestjs/common";
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiQuery,
 } from "@nestjs/swagger";
 import { PortfolioService } from "./portfolio.service";
 import { PortfolioResponseDto } from "./dto/portfolio-response.dto";
@@ -33,6 +34,17 @@ export class PortfolioController {
   })
   async getLendingDashboard(@Param("publicKey") publicKey: string) {
     return this.portfolioService.getLendingDashboard(publicKey);
+  }
+
+  @Get("chart/:publicKey/:poolId")
+  @ApiOperation({ summary: "Get position value & interest chart data" })
+  @ApiQuery({ name: "range", required: false, enum: ["7d", "30d", "90d"] })
+  async getPositionChart(
+    @Param("publicKey") publicKey: string,
+    @Param("poolId") poolId: string,
+    @Query("range") range: string = "30d",
+  ) {
+    return this.portfolioService.getPositionChartData(publicKey, poolId, range);
   }
 
   @Post("sync")

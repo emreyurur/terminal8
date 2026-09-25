@@ -7,6 +7,7 @@ import { PoolIndexerState } from './entities/pool-indexer-state.entity';
 import { HistoryController } from './history.controller';
 import { HistoryService } from './history.service';
 import { IndexerProcessor } from './indexer.processor';
+import { ScoutModule } from '../scout/scout.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { IndexerProcessor } from './indexer.processor';
     BullModule.registerQueue({
       name: 'history-indexer',
     }),
+    ScoutModule,
   ],
   controllers: [HistoryController],
   providers: [HistoryService, IndexerProcessor],

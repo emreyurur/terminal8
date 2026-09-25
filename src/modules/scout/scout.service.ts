@@ -236,6 +236,28 @@ export class ScoutService {
     return this.poolRepository.findOne({ where: { id } });
   }
 
+  async getPoolSnapshots(poolId: string, limit?: number) {
+    const query = this.snapshotRepository.createQueryBuilder("snapshot")
+      .where("snapshot.poolId = :poolId", { poolId })
+      .orderBy("snapshot.snapshotAt", "ASC");
+
+    if (limit) {
+      query.take(limit); // we probably want the latest `limit` snapshots, but ordered ASC.
+    }
+    
+    // Better logic for latest X records ordered ASC:
+    if (limit) {
+      const records = await this.snapshotRepository.find({
+        where: { poolId },
+        order: { snapshotAt: "DESC" },
+        take: limit
+      });
+      return records.reverse();
+    }
+
+    return query.getMany();
+  }
+
   async getPoolDashboard(poolId: string) {
     const pool = await this.getPool(poolId);
     if (!pool) return null;

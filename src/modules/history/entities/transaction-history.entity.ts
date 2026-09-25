@@ -12,6 +12,9 @@ export class TransactionHistory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ unique: true })
+  operationId: string;
+
   @Index()
   @Column()
   userPublicKey: string;
@@ -41,6 +44,12 @@ export class TransactionHistory {
 
   @Column({ nullable: true })
   tx: string; // The stellar transaction hash
+
+  @Column('timestamptz', { nullable: true })
+  occurredAt: Date; // The real ledger close time from Horizon
+
+  @Column({ nullable: true })
+  sharesAmount: string; // LP shares amount for average cost basis
 
   @CreateDateColumn()
   createdAt: Date;

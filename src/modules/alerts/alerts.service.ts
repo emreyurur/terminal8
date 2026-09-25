@@ -249,7 +249,7 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
     if (a.metric === "POSITION_VALUE") return positionValue(pool, shares, a.quoteSide);
 
     const basis = await this.history.calculateUserCostBasis(a.userPublicKey, a.poolId);
-    return impermanentLossPct(pool, shares, Number(basis.assetADeposited), Number(basis.assetBDeposited));
+    return impermanentLossPct(pool, shares, Number(basis.costBasisA), Number(basis.costBasisB));
   }
 
   /** One pass over all active alerts. Safe to call concurrently: a run in progress makes this a no-op. */

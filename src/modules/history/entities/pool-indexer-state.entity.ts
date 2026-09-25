@@ -8,6 +8,9 @@ export class PoolIndexerState {
   @Column({ default: '0' })
   lastPagingToken: string;
 
+  @Column({ default: false })
+  isFullySynced: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }
