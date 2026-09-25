@@ -79,7 +79,7 @@ export function getRouteMetadata(route: AppRoute): { title: string; description:
     }
   }
   return {
-    title: 'Terminal8 | Stellar DeFi',
+    title: 'Terminal8 | Stellar DeFi App',
     description: 'Discover, evaluate, and manage Stellar DeFi opportunities with Terminal8.',
   }
 }

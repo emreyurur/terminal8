@@ -166,7 +166,7 @@ export function BottomTerminal({
   if (!open) {
     return (
       <button
-        className="fixed inset-x-0 bottom-0 z-40 flex h-10 items-center justify-between border-t border-white/[0.12] bg-[#0D0D12] px-5 text-left text-sm text-[#F0F0F0] transition hover:bg-[#14141E] sm:px-8"
+        className="fixed inset-x-0 bottom-0 z-40 hidden h-10 items-center justify-between border-t border-white/[0.12] bg-[#0D0D12] px-8 text-left text-sm text-[#F0F0F0] transition hover:bg-[#14141E] md:flex"
         onClick={onOpen}
         type="button"
       >
@@ -180,7 +180,7 @@ export function BottomTerminal({
   }
 
   return (
-    <section className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.12] bg-[#0D0D12] text-[#F0F0F0] shadow-2xl">
+    <section className="fixed inset-x-0 bottom-0 z-40 hidden border-t border-white/[0.12] bg-[#0D0D12] text-[#F0F0F0] shadow-2xl md:block">
       {/* Tab bar */}
       <div className="flex h-10 items-center justify-between border-b border-white/[0.08] px-4 sm:px-6">
         <div className="flex items-center gap-4">

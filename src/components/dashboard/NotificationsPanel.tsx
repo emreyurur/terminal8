@@ -107,7 +107,7 @@ export function NotificationsPanel({ model, positions, initialNotification, onCl
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
             <img alt="" aria-hidden="true" className="size-4 shrink-0 rounded-full" src={xlmLogo} />
-            <span>{networkPassphrase?.includes('Test') ? 'Stellar Testnet' : networkPassphrase?.includes('Public') ? 'Stellar Mainnet' : 'Stellar network'}</span>
+            <span>{networkPassphrase?.includes('Test') ? 'Stellar Testnet' : 'Testnet connection required'}</span>
             <span className="font-mono">{connected ? `${publicKey.slice(0, 5)}...${publicKey.slice(-5)}` : 'Wallet not connected'}</span>
             {connected && <button type="button" className="inline-flex size-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-white" aria-label={addressCopied ? 'Wallet address copied' : 'Copy wallet address'} title={addressCopied ? 'Copied' : 'Copy wallet address'} onClick={() => void copyAddress()}>{addressCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}</button>}
           </div>

@@ -1,17 +1,17 @@
 import { Component, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ChevronRight, Search } from 'lucide-react'
+import { ChevronRight, Info, Search, X } from 'lucide-react'
 import xlmLogo from '../../assets/xlm.svg'
 import usdcLogo from '../../assets/usdc.svg'
 import aquaLogo from '../../assets/aquaris.svg'
-import { reputationLabel, reputationTotal, stellarPools } from '../../data/stellarMock'
 import { useWallet } from '../../context/useWallet'
 import { classifyWalletError } from '../../lib/walletErrors'
 import { estimateSecondaryAmount } from '../../services/soroswapLiquidity'
-import { executeApiPoolTransaction, fetchPoolRisk, type PoolRiskResponse } from '../../services/terminal8Api'
+import { executeApiPoolTransaction } from '../../services/terminal8Api'
 import { signTransaction } from '@stellar/freighter-api'
 import { usePortfolioDashboard } from '../../hooks/usePortfolioDashboard'
 import type { DeFiPool, LocalPosition, RiskProfile, WalletBalance } from '../../types/stellar'
 import { usePools } from '../../hooks/usePools'
+import { usePoolRisk } from '../../hooks/usePoolRisk'
 import { PoolDetailsView } from './PoolDetailsView'
 
 class SafeErrorBoundary extends Component<{ onReset: () => void; children: ReactNode }, { hasError: boolean; errorMessage: string; errorStack: string }> {
@@ -61,6 +61,16 @@ function getNowTimestamp(): number {
   return Date.now()
 }
 
+const XLM_TESTNET_GUIDE_COMPLETED_KEY = 'terminal8_xlm_testnet_guide_completed_v1'
+
+function hasCompletedXlmTestnetGuide(): boolean {
+  try {
+    return localStorage.getItem(XLM_TESTNET_GUIDE_COMPLETED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 function formatUsd(val: number | string): string {
   const num = Number(val) || 0
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -77,14 +87,15 @@ function formatTokenAmount(val: number | string): string {
   return num.toLocaleString('en-US', { maximumFractionDigits: 2 })
 }
 
-function formatEarnedAmount(val: number): string {
-  if (val > 0 && val < 0.01) return '<0.01'
-  return `+${formatTokenAmount(val)}`
-}
-
 function formatEarnedUsd(val: number): string {
   if (val > 0 && val < 0.01) return '<$0.01'
   return `+$${formatUsd(val)}`
+}
+
+function healthScoreLabel(score: number): 'Trusted' | 'Moderate' | 'Risky' {
+  if (score >= 75) return 'Trusted'
+  if (score >= 50) return 'Moderate'
+  return 'Risky'
 }
 
 // ─── Token Avatars Helper ────────────────────────────────────────────────────────
@@ -221,6 +232,7 @@ export function DefiOperations({
   const detailTab = routeDetailTab
   const [filterTab, setFilterTab] = useState<'all' | 'stables' | 'xlm'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showXlmGuide, setShowXlmGuide] = useState(true)
 
   const openPoolDetails = (poolId: string, tab: 'overview' | 'position') => {
     onDetailRouteChange(poolId, tab)
@@ -252,20 +264,24 @@ export function DefiOperations({
     const mappedApi: LocalPosition[] = validApiList.map((apiP, idx) => {
       const pId = String(apiP.poolId ?? apiP.pool_id ?? apiP.contractId ?? apiP.contract_id ?? apiP.poolAddress ?? apiP.pool_address ?? apiP.pool ?? apiP.id ?? '')
       const assetStr = String(apiP.asset ?? apiP.tokenSymbol ?? apiP.tokenCode ?? apiP.tokens ?? apiP.assetCode ?? apiP.asset_code ?? apiP.symbol ?? apiP.pair ?? apiP.assetA ?? apiP.asset_a ?? 'XLM')
+      const rawCurrentValueUsd = apiP.currentValueUsd ?? apiP.valueUsd
+      const rawPnlUsd = apiP.pnlUsd
       return {
         id: `api_pos_${idx}_${pId || assetStr}`,
         poolId: pId,
         asset: assetStr,
         amount: Number(apiP.amount ?? apiP.sharesOwned ?? apiP.shares ?? apiP.balance ?? 0),
-        apy: Number(apiP.apy ?? apiP.estimatedApy ?? 12.5),
-        openedAt: Number(apiP.timestamp ?? apiP.openedAt ?? 1720000000000),
-        hash: String(apiP.hash ?? apiP.txHash ?? `api_hash_${idx}`),
+        apy: Number.isFinite(Number(apiP.apy ?? apiP.estimatedApy)) ? Number(apiP.apy ?? apiP.estimatedApy) : 0,
+        openedAt: Number.isFinite(Number(apiP.timestamp ?? apiP.openedAt)) ? Number(apiP.timestamp ?? apiP.openedAt) : 0,
+        hash: String(apiP.hash ?? apiP.txHash ?? ''),
         protocol: String(apiP.protocol ?? 'Soroswap AMM'),
         status: String(apiP.status ?? 'SUCCESS'),
-        timestamp: String(apiP.date ?? '12:00:00 AM'),
+        timestamp: String(apiP.date ?? ''),
         category: (apiP.category as LocalPosition['category']) || 'AMM LP',
-        currentValueUsd: Number(apiP.currentValueUsd ?? apiP.valueUsd ?? 0),
-        pnlUsd: Number(apiP.pnlUsd ?? 0),
+        currentValueUsd: rawCurrentValueUsd != null && Number.isFinite(Number(rawCurrentValueUsd))
+          ? Number(rawCurrentValueUsd)
+          : undefined,
+        pnlUsd: rawPnlUsd != null && Number.isFinite(Number(rawPnlUsd)) ? Number(rawPnlUsd) : undefined,
         sharesOwned: Number(apiP.sharesOwned ?? apiP.shares ?? 0),
       }
     })
@@ -287,10 +303,7 @@ export function DefiOperations({
   }, [publicKey, positions, portfolioState.state])
 
   const poolsState = usePools(publicKey)
-  const activePools =
-    poolsState.status === 'success' && poolsState.pools.length > 0
-      ? poolsState.pools
-      : stellarPools.slice().sort((a, b) => (b.tvlRaw || 0) - (a.tvlRaw || 0)).slice(0, 15)
+  const activePools = poolsState.status === 'success' ? poolsState.pools : []
 
   const filteredPools = activePools.filter((pool) => {
     const pairStr = `${pool.asset} ${pool.secondaryAsset ?? ''} ${pool.protocol}`.toLowerCase()
@@ -308,13 +321,16 @@ export function DefiOperations({
     asset: pos.asset || 'XLM',
     name: `${pos.asset || 'XLM'} Vault`,
     protocol: 'Soroswap',
-    apy: Number.isFinite(Number(pos.apy)) ? Number(pos.apy) : 12.5,
-    tvl: '$1.2M',
-    tvlRaw: 1200000,
+    apy: Number.isFinite(Number(pos.apy)) ? Number(pos.apy) : 0,
+    apyAvailable: Number.isFinite(Number(pos.apy)),
+    tvl: '--',
+    tvlRaw: 0,
+    depositsAvailable: false,
     risk: 'Conservative',
+    riskDataAvailable: false,
     category: 'AMM LP',
     feeBp: 30,
-    reputation: { liquidity: 20, age: 10, audit: 10, activity: 10 },
+    reputation: { liquidity: 0, age: 0, audit: 0, activity: 0 },
     method: 'addLiquidity()',
     rationale: 'Active user position liquidity pool.',
     contractId: pos.poolId || 'SoroswapPool',
@@ -323,11 +339,28 @@ export function DefiOperations({
   const allKnownPools = [
     ...activePools,
     ...(poolsState.status === 'success' ? poolsState.pools : []),
-    ...stellarPools,
     ...positionPools,
   ]
   const selectedPool = allKnownPools.find((p) => p.id === selectedPoolId) ?? null
-  const featuredPools = activePools.slice(0, 3)
+  const xlmFeaturedPool = activePools.find((pool) =>
+    pool.asset?.toUpperCase() === 'XLM' || pool.secondaryAsset?.toUpperCase() === 'XLM',
+  )
+  const featuredPools = xlmFeaturedPool
+    ? [xlmFeaturedPool, ...activePools.filter((pool) => pool.id !== xlmFeaturedPool.id).slice(0, 2)]
+    : activePools.slice(0, 3)
+  const hasOpenPosition = displayPositions.length > 0
+  const portfolioCheckComplete = !publicKey || portfolioState.state.status === 'success' || portfolioState.state.status === 'error'
+  const shouldShowXlmGuide = showXlmGuide && !hasOpenPosition && !hasCompletedXlmTestnetGuide() && portfolioCheckComplete
+
+  useEffect(() => {
+    if (!hasOpenPosition) return
+
+    try {
+      localStorage.setItem(XLM_TESTNET_GUIDE_COMPLETED_KEY, '1')
+    } catch {
+      /* The guide still remains hidden for the current page session. */
+    }
+  }, [hasOpenPosition])
 
   const getAvailableBalance = (assetCode?: string) => {
     if (!assetCode || typeof assetCode !== 'string') return 0
@@ -376,45 +409,39 @@ export function DefiOperations({
               </div>
 
               {(() => {
-                const totalValUsd = displayPositions.reduce((acc, p) => {
-                  const price = p.asset === 'XLM' ? 0.12 : 1
-                  return acc + p.amount * price
-                }, 0)
-                const weightedApy = totalValUsd > 0
+                const hasCompleteValues = displayPositions.every((position) => Number.isFinite(position.currentValueUsd))
+                const totalValUsd = hasCompleteValues
+                  ? displayPositions.reduce((acc, position) => acc + Number(position.currentValueUsd), 0)
+                  : null
+                const weightedApy = totalValUsd !== null && totalValUsd > 0
                   ? displayPositions.reduce((acc, p) => {
-                      const price = p.asset === 'XLM' ? 0.12 : 1
-                      return acc + (p.amount * price * p.apy)
-                    }, 0) / totalValUsd
+                      return acc + (Number(p.currentValueUsd) * p.apy)
+                    }, 0) / Number(totalValUsd)
                   : displayPositions.reduce((acc, p) => acc + p.apy, 0) / (displayPositions.length || 1)
-                const totalEarnedUsd = displayPositions.reduce((acc, p) => {
-                  const price = p.asset === 'XLM' ? 0.12 : 1
-                  const elapsed = Date.now() - p.openedAt
-                  const hours = elapsed / 3_600_000
-                  const earned = p.amount * (p.apy / 100) * (hours / 8760)
-                  return acc + earned * price
-                }, 0)
+                const hasCompletePnl = displayPositions.every((position) => Number.isFinite(position.pnlUsd))
+                const totalEarnedUsd = hasCompletePnl
+                  ? displayPositions.reduce((acc, position) => acc + Number(position.pnlUsd), 0)
+                  : null
                 const displayCount = displayPositions.length
-                const displayValUsd = totalValUsd
                 const displayApy = Number.isFinite(weightedApy) ? weightedApy : 0
-                const displayEarned = totalEarnedUsd
 
                 return (
                   <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-white/[0.07] bg-[#0F141C] lg:grid-cols-4">
                     <div className="p-4 sm:px-5">
                       <p className="text-xs text-[#718096]">Positions</p>
-                      <p className="mt-1.5 text-lg font-medium text-white">{displayCount}</p>
+                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-white">{displayCount}</p>
                     </div>
                     <div className="border-l border-white/[0.07] p-4 sm:px-5">
                       <p className="text-xs text-[#718096]">Supplied</p>
-                      <p className="mt-1.5 text-lg font-medium text-white">${formatUsd(displayValUsd)}</p>
+                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-white">{totalValUsd === null ? '--' : `$${formatUsd(totalValUsd)}`}</p>
                     </div>
                     <div className="border-t border-white/[0.07] p-4 sm:px-5 lg:border-l lg:border-t-0">
                       <p className="text-xs text-[#718096]">Avg APY</p>
-                      <p className="mt-1.5 text-lg font-medium text-[#35D49A]">{formatAmount(displayApy, 1)}%</p>
+                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-[#35D49A]">{formatAmount(displayApy, 1)}%</p>
                     </div>
                     <div className="border-l border-t border-white/[0.07] p-4 sm:px-5 lg:border-t-0">
                       <p className="text-xs text-[#718096]">Earned</p>
-                      <p className="mt-1.5 text-lg font-medium text-[#35D49A]">{formatEarnedUsd(displayEarned)}</p>
+                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-[#35D49A]">{totalEarnedUsd === null ? '--' : formatEarnedUsd(totalEarnedUsd)}</p>
                     </div>
                   </div>
                 )
@@ -430,13 +457,13 @@ export function DefiOperations({
                 </div>
                 <div className="divide-y divide-white/[0.06]">
                   {displayPositions.map((pos) => {
-                    const matchingPool = findMatchingPool(pos, allKnownPools, activePools[0] || stellarPools[0])
-                    const price = pos.asset === 'XLM' ? 0.12 : 1
-                    const posValUsd = pos.amount * price
-                    const elapsed = getNowTimestamp() - pos.openedAt
-                    const hours = elapsed / 3_600_000
-                    const earned = pos.amount * (pos.apy / 100) * (hours / 8760)
-                    const earnedUsd = earned * price
+                    const matchingPool = findMatchingPool(
+                      pos,
+                      allKnownPools,
+                      positionPools.find((pool) => pool.id === pos.poolId) ?? positionPools[0],
+                    )
+                    const posValUsd = Number.isFinite(pos.currentValueUsd) ? Number(pos.currentValueUsd) : null
+                    const earnedUsd = Number.isFinite(pos.pnlUsd) ? Number(pos.pnlUsd) : null
                     const posPair = matchingPool.secondaryAsset
                       ? `${matchingPool.asset} / ${matchingPool.secondaryAsset}`
                       : pos.asset === 'XLM' ? 'XLM / USDC' : `${pos.asset} / XLM`
@@ -457,8 +484,8 @@ export function DefiOperations({
                           <span className="flex items-center gap-2 text-sm font-medium text-[#35D49A]">
                             {formatAmount(pos.apy, 1)}% <ChevronRight size={16} className="text-[#718096]" />
                           </span>
-                          <span className="col-start-1 text-xs text-[#98A6B7]">{formatTokenAmount(pos.amount)} {pos.asset} · ${formatUsd(posValUsd)}</span>
-                          <span className="col-start-2 text-right text-xs text-[#35D49A]">{formatEarnedUsd(earnedUsd)}</span>
+                          <span className="col-start-1 text-xs text-[#98A6B7]">{formatTokenAmount(pos.amount)} {pos.asset} · {posValUsd === null ? '--' : `$${formatUsd(posValUsd)}`}</span>
+                          <span className="col-start-2 text-right text-xs text-[#35D49A]">{earnedUsd === null ? '--' : formatEarnedUsd(earnedUsd)}</span>
                         </button>
 
                         <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(180px,1.2fr)_110px_minmax(170px,1.2fr)_100px] items-center gap-6 px-6 py-4 transition hover:bg-white/[0.02] lg:grid">
@@ -471,12 +498,11 @@ export function DefiOperations({
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-white">{formatTokenAmount(pos.amount)} {pos.asset}</p>
-                            <p className="mt-0.5 text-xs text-[#718096]">${formatUsd(posValUsd)}</p>
+                            <p className="mt-0.5 text-xs text-[#718096]">{posValUsd === null ? '--' : `$${formatUsd(posValUsd)}`}</p>
                           </div>
                           <span className="text-sm font-medium text-[#35D49A]">{formatAmount(pos.apy, 1)}%</span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-[#35D49A]">{formatEarnedAmount(earned)} {pos.asset}</p>
-                            <p className="mt-0.5 text-xs text-[#718096]">{formatEarnedUsd(earnedUsd)}</p>
+                            <p className="truncate text-sm font-medium text-[#35D49A]">{earnedUsd === null ? '--' : formatEarnedUsd(earnedUsd)}</p>
                           </div>
                           <button className="h-9 rounded-md bg-[#1A2230] px-4 text-sm font-medium text-white transition hover:bg-[#222C3B]" onClick={openPosition} type="button">Manage</button>
                         </div>
@@ -491,9 +517,50 @@ export function DefiOperations({
           {/* Kamino-Style Featured Strip */}
           <div>
             <SectionLabel>Featured pools</SectionLabel>
+
+            {shouldShowXlmGuide && xlmFeaturedPool && (
+              <div className="animate-fade-slide-up relative mt-4 flex flex-col gap-4 overflow-hidden rounded-lg border border-[#3B82F6]/30 bg-[#101722] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between" role="status">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#3B82F6]/12 text-[#70A5FF]">
+                    <Info aria-hidden="true" size={17} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white">Testnet quick start</p>
+                    <p className="mt-1 max-w-3xl text-xs leading-5 text-[#98A6B7]">
+                      Open the highlighted XLM pool and choose <span className="font-medium text-[#D7DEE8]">Single asset</span> to test deposits and withdrawals using the Testnet XLM already in your wallet.
+                    </p>
+                    <p className="mt-1 text-[11px] leading-4 text-[#718096]">
+                      Testnet note: Pools without active liquidity may correctly display 0% APY.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+                  <button
+                    className="h-8 rounded-md bg-[#3B82F6] px-3 text-xs font-semibold text-white transition hover:bg-[#4B8CF7]"
+                    onClick={() => {
+                      setShowXlmGuide(false)
+                      openPoolDetails(xlmFeaturedPool.id, 'overview')
+                    }}
+                    type="button"
+                  >
+                    Try XLM pool
+                  </button>
+                  <button
+                    aria-label="Dismiss Testnet quick start"
+                    className="flex size-8 items-center justify-center rounded-md text-[#7D899A] transition hover:bg-white/[0.06] hover:text-white"
+                    onClick={() => setShowXlmGuide(false)}
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {featuredPools.map((pool) => {
                 const pairLabel = pool.secondaryAsset ? `${pool.asset} / ${pool.secondaryAsset}` : pool.asset
+                const isGuidedXlmPool = shouldShowXlmGuide && pool.id === xlmFeaturedPool?.id
                 return (
                   <div
                     key={`featured-${pool.id}`}
@@ -503,6 +570,8 @@ export function DefiOperations({
                     className={`group relative cursor-pointer overflow-hidden rounded-xl border p-5 transition-all duration-200 ${
                       selectedPoolId === pool.id
                         ? 'border-[#F2C12E]/55 bg-[#171A1D]'
+                        : isGuidedXlmPool
+                          ? 'border-[#3B82F6]/55 bg-[#111D2B] ring-1 ring-[#3B82F6]/20'
                         : 'border-white/[0.07] bg-[#101923] hover:border-white/[0.16] hover:bg-[#131E29]'
                     }`}
                   >
@@ -517,6 +586,11 @@ export function DefiOperations({
                           )}
                         </div>
                         <span className="text-sm font-semibold text-[#F0F0F0]">{pairLabel}</span>
+                        {isGuidedXlmPool && (
+                          <span className="shrink-0 rounded-full border border-[#3B82F6]/30 bg-[#0E1B2C] px-2 py-0.5 text-[10px] font-semibold text-[#70A5FF]">
+                            Start here
+                          </span>
+                        )}
                       </div>
                       <span className="rounded-full border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-[#98A6B7]">
                         {pool.tvl} TVL
@@ -525,7 +599,7 @@ export function DefiOperations({
 
                     <div className="mt-4 flex items-end justify-between">
                       <div>
-                        <p className="text-3xl font-medium leading-8 text-[#F2C12E]">{pool.apy.toFixed(2)}% <span className="text-xs font-medium text-[#F2C12E]">APY</span></p>
+                        <p className="text-3xl font-medium leading-8 text-[#F2C12E]">{pool.apyAvailable ? `${pool.apy.toFixed(2)}%` : '--'} <span className="text-xs font-medium text-[#F2C12E]">APY</span></p>
                         <p className="mt-0.5 text-xs text-[#9CA3AF]">{pool.protocol}</p>
                       </div>
                       <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-[#98A6B7] transition group-hover:bg-[#F2C12E]/10 group-hover:text-[#F2C12E]">
@@ -589,18 +663,18 @@ export function DefiOperations({
                 <span>APY</span>
                 <span>Deposits</span>
                 <span>Vault Profile</span>
-                <span>Trust Score</span>
+                <span>Health Score</span>
                 <span>Action</span>
               </div>
 
               {/* Table Rows */}
               <div className="divide-y divide-white/[0.04]">
                 {filteredPools.map((pool) => {
-                  const score = reputationTotal(pool.reputation)
-                  const label = reputationLabel(score)
+                  const score = Number.isFinite(Number(pool.compositeScore)) ? Math.round(Number(pool.compositeScore)) : null
+                  const label = score === null ? null : healthScoreLabel(score)
                   const pairLabel = pool.secondaryAsset ? `${pool.asset} / ${pool.secondaryAsset}` : pool.asset
                   const isSelected = selectedPoolId === pool.id
-                  const isRecommended = riskProfile ? pool.risk === riskProfile : false
+                  const isRecommended = pool.riskDataAvailable && riskProfile ? pool.risk === riskProfile : false
 
                   return (
                     <div key={pool.id}>
@@ -624,7 +698,7 @@ export function DefiOperations({
                           </span>
                         </span>
                         <span className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-[#35D49A]">{pool.apy.toFixed(2)}%</span>
+                          <span className="text-sm font-medium text-[#35D49A]">{pool.apyAvailable ? `${pool.apy.toFixed(2)}%` : '--'}</span>
                           <ChevronRight size={16} className="text-[#718096]" />
                         </span>
                         <span className="col-start-1 text-xs text-[#718096]">Deposits</span>
@@ -663,7 +737,7 @@ export function DefiOperations({
 
                         {/* APY */}
                         <span className="text-sm font-medium text-[#35D49A]">
-                          {pool.apy.toFixed(2)}%
+                          {pool.apyAvailable ? `${pool.apy.toFixed(2)}%` : '--'}
                         </span>
 
                         {/* Deposits */}
@@ -674,31 +748,41 @@ export function DefiOperations({
                           <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/[0.07] bg-white/[0.035] px-2.5 text-xs font-medium leading-none text-[#D7DEE8]">
                             <span
                               className={`size-1.5 rounded-full ${
-                                pool.risk === 'Conservative'
+                                !pool.riskDataAvailable
+                                  ? 'bg-[#657284]'
+                                  : pool.risk === 'Conservative'
                                   ? 'bg-[#16A34A]'
                                   : pool.risk === 'Moderate'
                                     ? 'bg-[#F2C12E]'
                                     : 'bg-[#DC2626]'
                               }`}
                             />
-                            {pool.risk === 'Moderate' ? 'Balanced' : pool.risk}
+                            {!pool.riskDataAvailable ? 'Unavailable' : pool.risk === 'Moderate' ? 'Balanced' : pool.risk}
                           </span>
                         </div>
 
-                        {/* Trust Score */}
+                        {/* Health Score */}
                         <div className="flex items-center">
                           <span
                             className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium leading-none ${
-                              label === 'Trusted'
+                              label === null
+                                ? 'border-white/[0.08] bg-white/[0.035] text-[#7D899A]'
+                                : label === 'Trusted'
                                 ? 'border-[#35D49A]/20 bg-[#35D49A]/[0.07] text-[#35D49A]'
                                 : label === 'Moderate'
                                   ? 'border-[#F2C12E]/20 bg-[#F2C12E]/[0.07] text-[#F2C12E]'
                                   : 'border-red-400/20 bg-red-400/[0.07] text-red-400'
                             }`}
                           >
-                            <span className="tabular-nums">{score}</span>
-                            <span className="opacity-50">&middot;</span>
-                            <span>{label}</span>
+                            {score === null ? (
+                              <span>Unavailable</span>
+                            ) : (
+                              <>
+                                <span className="tabular-nums">{score}</span>
+                                <span className="opacity-50">&middot;</span>
+                                <span>{label}</span>
+                              </>
+                            )}
                           </span>
                         </div>
 
@@ -724,10 +808,14 @@ export function DefiOperations({
                   )
                 })}
 
-                {filteredPools.length === 0 && (
-                  <div className="py-12 text-center text-sm text-[#9CA3AF]">
-                    No vaults match your filter or search query.
-                  </div>
+                {poolsState.status === 'loading' && (
+                  <div className="px-6 py-10 text-center text-sm text-[#7D899A]">Loading live pool metrics...</div>
+                )}
+                {poolsState.status === 'error' && (
+                  <div className="px-6 py-10 text-center text-sm text-[#7D899A]">Live pool metrics are currently unavailable.</div>
+                )}
+                {poolsState.status === 'success' && filteredPools.length === 0 && (
+                  <div className="px-6 py-10 text-center text-sm text-[#7D899A]">No pools match the selected filters.</div>
                 )}
               </div>
             </div>
@@ -872,7 +960,7 @@ export function PositionManageModal({
 
     if (!isTestnet) {
       setTxState('error')
-      setTxMessage('Switch Freighter to Testnet to run demo transactions.')
+      setTxMessage('Switch Freighter to Testnet to continue.')
       return
     }
 
@@ -1022,7 +1110,7 @@ export function PositionManageModal({
                 <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[#F2C12E]/25 bg-[#F2C12E]/10 p-3 text-sm text-[#F0F0F0]">
                   <span className="mt-0.5 shrink-0 text-[#F2C12E]">⚠</span>
                   <p>
-                    Switch Freighter to <strong>Testnet</strong> to run demo transactions.
+                    Switch Freighter to <strong>Testnet</strong> to continue.
                   </p>
                 </div>
               )}
@@ -1050,7 +1138,7 @@ export function PositionManageModal({
                       : `Sign full withdrawal · ${position.amount} ${position.asset}`}
               </button>
               <p className="mt-2 text-center text-xs text-[#9CA3AF]">
-                Demo sends 0.001 XLM to self · real Freighter approval
+                Transaction data is built by the Terminal8 API for Stellar Testnet.
               </p>
             </>
           )}
@@ -1109,8 +1197,8 @@ export function PoolCard({
   pool: DeFiPool
   selected: boolean
 }) {
-  const score = reputationTotal(pool.reputation)
-  const label = reputationLabel(score)
+  const score = Number.isFinite(Number(pool.compositeScore)) ? Math.round(Number(pool.compositeScore)) : null
+  const label = score === null ? null : healthScoreLabel(score)
   const pairLabel = pool.secondaryAsset ? `${pool.asset} / ${pool.secondaryAsset}` : pool.asset
 
   return (
@@ -1138,7 +1226,9 @@ export function PoolCard({
 
           <button
             className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
-              label === 'Trusted'
+              !label
+                ? 'border-white/[0.08] bg-white/[0.04] text-[#7D899A]'
+                : label === 'Trusted'
                 ? 'border-[#16A34A]/30 bg-[#16A34A]/10 text-[#16A34A] hover:bg-[#16A34A]/20'
                 : label === 'Moderate'
                   ? 'border-[#F2C12E]/30 bg-[#F2C12E]/10 text-[#F2C12E] hover:bg-[#F2C12E]/20'
@@ -1150,14 +1240,16 @@ export function PoolCard({
           >
             <span
               className={`mr-1.5 inline-block size-1.5 rounded-full align-middle ${
-                label === 'Trusted'
+                !label
+                  ? 'bg-[#718096]'
+                  : label === 'Trusted'
                   ? 'bg-[#16A34A]'
                   : label === 'Moderate'
                     ? 'bg-[#F2C12E]'
                     : 'bg-red-400'
               }`}
             />
-            {score} · {label}
+            {score === null ? 'Unavailable' : `${score} · ${label}`}
           </button>
         </div>
 
@@ -1182,7 +1274,7 @@ export function PoolCard({
           </div>
         )}
 
-        {expanded && <ReputationBreakdown poolId={pool.id} reputation={pool.reputation} score={score} />}
+        {expanded && <ReputationBreakdown poolId={pool.id} />}
 
         <div className="mt-4">
           <button
@@ -1204,56 +1296,25 @@ export function PoolCard({
 
 // ─── Reputation Breakdown ─────────────────────────────────────────────────────
 
-function ReputationBreakdown({
-  poolId,
-  reputation,
-  score,
-}: {
-  hasActivePosition?: boolean
-  poolId?: string
-  reputation: DeFiPool['reputation']
-  score: number
-}) {
-  const [liveRisk, setLiveRisk] = useState<PoolRiskResponse | null>(null)
+function ReputationBreakdown({ poolId }: { poolId: string }) {
+  const riskState = usePoolRisk(poolId)
+  const liveRisk = riskState.status === 'success' ? riskState.data : null
 
-  useEffect(() => {
-    if (!poolId) return
-    let cancelled = false
-    fetchPoolRisk(poolId)
-      .then((data) => {
-        if (!cancelled) setLiveRisk(data)
-      })
-      .catch(() => {
-        // Fallback silently if API is offline
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [poolId])
-
-  const displayScore = liveRisk ? liveRisk.compositeScore : score
+  if (!liveRisk) {
+    return (
+      <div className="mt-4 rounded-xl border border-white/[0.08] bg-[#161622] p-4 text-xs text-[#9CA3AF]">
+        {riskState.status === 'loading' || riskState.status === 'idle'
+          ? 'Loading live risk data...'
+          : 'Live risk data is currently unavailable.'}
+      </div>
+    )
+  }
 
   const rows = [
-    {
-      label: 'Liquidity / TVL Score',
-      value: liveRisk ? liveRisk.tvlScore : reputation.liquidity,
-      max: liveRisk ? 50 : 40,
-    },
-    {
-      label: 'Volatility Score',
-      value: liveRisk ? liveRisk.volatilityScore : reputation.age,
-      max: liveRisk ? 50 : 20,
-    },
-    {
-      label: 'APY / Audit Score',
-      value: liveRisk ? liveRisk.apyScore : reputation.audit,
-      max: liveRisk ? 50 : 20,
-    },
-    {
-      label: 'Activity',
-      value: reputation.activity,
-      max: 20,
-    },
+    { label: 'Audit Security', value: liveRisk.trustScore },
+    { label: 'Liquidity Depth', value: liveRisk.tvlScore },
+    { label: 'Volatility Stability', value: liveRisk.volatilityScore },
+    { label: 'APY Health', value: liveRisk.apyScore },
   ]
 
   return (
@@ -1268,7 +1329,7 @@ function ReputationBreakdown({
               </span>
             )}
           </div>
-          <p className="text-sm font-bold text-[#F0F0F0]">{displayScore}/100</p>
+          <p className="text-sm font-bold text-[#F0F0F0]">{liveRisk.compositeScore}/100</p>
         </div>
         <div className="space-y-2.5">
           {rows.map((row) => (
@@ -1276,13 +1337,13 @@ function ReputationBreakdown({
               <div className="mb-1 flex items-center justify-between text-xs">
                 <span className="text-[#9CA3AF]">{row.label}</span>
                 <span className="font-medium text-[#F0F0F0]">
-                  {row.value}/{row.max}
+                  {row.value}/100
                 </span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
                 <div
                   className="h-full rounded-full bg-[#16A34A] transition-all duration-300"
-                  style={{ width: `${Math.min(100, (row.value / row.max) * 100)}%` }}
+                  style={{ width: `${row.value}%` }}
                 />
               </div>
             </div>
@@ -1333,7 +1394,7 @@ export function StakeTicket({
 
     if (!isTestnet) {
       setTxState('error')
-      setTxMessage('Switch Freighter to Testnet to run demo transactions.')
+      setTxMessage('Switch Freighter to Testnet to continue.')
       return
     }
 
@@ -1393,7 +1454,7 @@ export function StakeTicket({
           <h2 className="mt-1 text-xl font-semibold text-[#F0F0F0]">{pool.protocol}</h2>
         </div>
         <span className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-[#9CA3AF]">
-          Testnet demo
+          Testnet
         </span>
       </div>
 
@@ -1467,7 +1528,7 @@ export function StakeTicket({
         <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[#F2C12E]/25 bg-[#F2C12E]/10 p-3 text-sm text-[#F0F0F0]">
           <span className="mt-0.5 shrink-0 text-[#F2C12E]">⚠</span>
           <p>
-            Switch Freighter to <strong>Testnet</strong> to run demo transactions.
+            Switch Freighter to <strong>Testnet</strong> to continue.
           </p>
         </div>
       )}
@@ -1482,7 +1543,7 @@ export function StakeTicket({
       </button>
 
       <p className="mt-2.5 text-center text-xs text-[#9CA3AF]">
-        Demo sends 0.001 XLM to self · real Freighter approval
+        Transaction data is built by the Terminal8 API for Stellar Testnet.
       </p>
 
       {txMessage && txState === 'error' && (
@@ -1544,7 +1605,6 @@ export function PortfolioWidget({
   usdcBalance: number
   xlmBalance: number
 }) {
-  const totalEst = xlmBalance * 0.12 + usdcBalance
   const riskDot =
     riskProfile === 'Conservative'
       ? 'bg-[#16A34A]'
@@ -1557,8 +1617,8 @@ export function PortfolioWidget({
       <div className="flex flex-wrap items-center gap-6">
         <div className="border-r border-white/[0.08] pr-6">
           <p className="text-[10px] uppercase tracking-[0.16em] text-[#9CA3AF]">Portfolio</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-[#F0F0F0]">${totalEst.toFixed(2)}</p>
-          <p className="mt-0.5 text-[10px] text-[#9CA3AF]/60">~estimate · Testnet</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[#F0F0F0]">Testnet</p>
+          <p className="mt-0.5 text-[10px] text-[#9CA3AF]/60">Live wallet balances</p>
         </div>
 
         <div className="flex items-center gap-5">
@@ -1835,7 +1895,7 @@ export function BundleExecuteModal({
           status: result.status,
           timestamp: new Date().toLocaleTimeString(),
           openedAt: Date.now(),
-          apy: stellarPools.find((p) => p.id === alloc.poolId)?.apy ?? 4,
+          apy: 0,
           category: alloc.category,
           poolId: alloc.poolId,
         })
@@ -1924,8 +1984,8 @@ export function BundleExecuteModal({
                         </span>
                       </div>
                     )
-                  })}
-                </div>
+                })}
+              </div>
               )}
 
               {!isTestnet && isConnected && (
@@ -2027,10 +2087,9 @@ export function PortfolioAllocation({
   positions: LocalPosition[]
   riskProfile: RiskProfile | null
 }) {
-  const totalValue = positions.reduce(
-    (s, p) => s + p.amount * (p.asset === 'USDC' ? 1 : 0.12),
-    0,
-  )
+  const totalValue = positions.reduce((sum, position) => (
+    Number.isFinite(position.currentValueUsd) ? sum + Number(position.currentValueUsd) : sum
+  ), 0)
 
   const categories: { id: string; label: string; color: string; bg: string; target?: number }[] = [
     { id: 'Lending', label: 'Lending', color: 'bg-[#F2C12E]', bg: 'bg-[#F2C12E]/10',
@@ -2044,7 +2103,9 @@ export function PortfolioAllocation({
   const stats = categories.map((cat) => {
     const value = positions
       .filter((p) => p.category === cat.id)
-      .reduce((s, p) => s + p.amount * (p.asset === 'USDC' ? 1 : 0.12), 0)
+      .reduce((sum, position) => (
+        Number.isFinite(position.currentValueUsd) ? sum + Number(position.currentValueUsd) : sum
+      ), 0)
     const pct = totalValue > 0 ? (value / totalValue) * 100 : 0
     return { ...cat, value, pct }
   }).filter((c) => c.value > 0 || (c.target ?? 0) > 0)

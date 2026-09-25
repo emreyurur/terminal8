@@ -98,6 +98,11 @@ export type DeFiPool = {
   feeBp?: number
   reserveA?: number
   reserveB?: number
+  trustScore?: number
+  compositeScore?: number
+  apyAvailable?: boolean
+  depositsAvailable?: boolean
+  riskDataAvailable?: boolean
   reputation: PoolReputation
   risk: RiskProfile
   method: 'supply()' | 'addLiquidity()'

@@ -270,7 +270,7 @@ function AppInner() {
             ? 'max-w-[1440px] px-4 py-0 sm:px-6'
             : 'max-w-[1280px] px-4 py-8 sm:px-6 sm:py-10'
         } ${
-          terminalOpen ? 'pb-88' : 'pb-20'
+          terminalOpen ? 'pb-8 md:pb-88' : 'pb-8 md:pb-20'
         }`}
       >
         {activePage === 'home' ? (

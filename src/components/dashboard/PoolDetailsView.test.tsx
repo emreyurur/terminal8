@@ -4,6 +4,8 @@ import type { DeFiPool, LocalPosition } from '../../types/stellar'
 import { executeOnChainTrustVote, fetchOnChainPoolScore } from '../../services/poolVotingContract'
 import { PoolDetailsView } from './PoolDetailsView'
 
+const usePoolRiskMock = vi.hoisted(() => vi.fn())
+
 vi.mock('../../context/useWallet', () => ({
   useWallet: () => ({
     connect: vi.fn(),
@@ -14,7 +16,7 @@ vi.mock('../../context/useWallet', () => ({
   }),
 }))
 
-vi.mock('../../hooks/usePoolRisk', () => ({ usePoolRisk: () => ({ status: 'idle' }) }))
+vi.mock('../../hooks/usePoolRisk', () => ({ usePoolRisk: usePoolRiskMock }))
 vi.mock('../../hooks/usePoolDashboard', () => ({ usePoolDashboard: () => ({ status: 'idle' }) }))
 vi.mock('../../services/terminal8Api', () => ({
   executeApiPoolTransaction: vi.fn(),
@@ -73,6 +75,39 @@ function renderView(userPositions: LocalPosition[] = []) {
 describe('PoolDetailsView on-chain vault voting', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    usePoolRiskMock.mockReturnValue({ status: 'idle' })
+  })
+
+  it('shows health telemetry only from the pool risk API state', () => {
+    usePoolRiskMock.mockReturnValue({
+      status: 'success',
+      data: {
+        poolId: pool.id,
+        trustScore: 60,
+        tvlScore: 100,
+        volatilityScore: 50,
+        apyScore: 100,
+        compositeScore: 78,
+        riskLevel: 'LOW',
+        estimatedApy: 0.3,
+      },
+    })
+
+    renderView()
+
+    expect(screen.getByText('78 / 100')).toBeInTheDocument()
+    expect(screen.getByText('Conservative')).toBeInTheDocument()
+    expect(screen.getByText('60')).toBeInTheDocument()
+  })
+
+  it('does not fall back to the pool model when risk telemetry is unavailable', () => {
+    usePoolRiskMock.mockReturnValue({ status: 'error' })
+
+    renderView()
+
+    expect(screen.getByText('Risk unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Could not load live risk telemetry.')).toBeInTheDocument()
+    expect(screen.queryByText('Conservative')).not.toBeInTheDocument()
   })
 
   it('shows zero contract votes without mock totals and locks voting without a position', async () => {

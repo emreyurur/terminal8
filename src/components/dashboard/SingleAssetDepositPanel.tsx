@@ -95,7 +95,7 @@ export function SingleAssetDepositPanel({ pool, publicKey, networkUrl, canSign, 
         status: 'SUCCESS',
         timestamp: new Date().toLocaleTimeString(),
         openedAt: Date.now(),
-        apy: Number.isFinite(Number(pool.apy)) ? Number(pool.apy) : 5,
+        apy: Number.isFinite(Number(pool.apy)) ? Number(pool.apy) : 0,
         category: pool.category || 'AMM LP',
         poolId: pool.id,
       })

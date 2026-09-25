@@ -474,12 +474,7 @@ export function PoolDetailsView({
     ? estimateSecondaryAmount(pool.asset, amount, secondaryAsset, pool.reserveA, pool.reserveB)
     : 0
 
-  // Approximate USD value for deposit
-  const poolAsset = pool.asset as string
-  const tokenUsdPrice = poolAsset === 'USDC' || poolAsset === 'EURC' ? 1 : poolAsset === 'XLM' ? 0.12 : 1
-  const usdValue = amount * tokenUsdPrice
-
-  const safeApy = Number.isFinite(Number(pool.apy)) ? Number(pool.apy) : 5.0
+  const safeApy = Number.isFinite(Number(pool.apy)) ? Number(pool.apy) : 0
 
   const hasConfirmedPosition = optimisticPosition
     ? userPositions.some((position) => position.hash === optimisticPosition.hash)
@@ -490,21 +485,14 @@ export function PoolDetailsView({
   const myPosition = findActivePositionForPool(visiblePositions, pool)
   const rawAmount = Number(myPosition?.amount)
   const suppliedAmount = Number.isFinite(rawAmount) ? rawAmount : 0
-  const localPositionValueUsd = Number.isFinite(suppliedAmount * tokenUsdPrice) ? suppliedAmount * tokenUsdPrice : 0
   const apiPositionValueUsd = Number(myPosition?.currentValueUsd)
-  const suppliedUsdValue = Number.isFinite(apiPositionValueUsd) ? apiPositionValueUsd : localPositionValueUsd
+  const hasPositionValue = Boolean(myPosition) && Number.isFinite(apiPositionValueUsd)
+  const suppliedUsdValue = hasPositionValue ? apiPositionValueUsd : 0
   const apiSharesOwned = Number(myPosition?.sharesOwned)
   const displayedShares = Number.isFinite(apiSharesOwned) ? apiSharesOwned : suppliedAmount
-  const withdrawUsdValue = Number.isFinite(withdrawAmount * tokenUsdPrice) ? withdrawAmount * tokenUsdPrice : 0
-  const elapsed = myPosition?.openedAt ? getNowTimestamp() - myPosition.openedAt : 0
-  const hours = elapsed / 3_600_000
-  const positionEarnedUsd = myPosition
-    ? suppliedUsdValue * (((Number(myPosition.apy) || safeApy)) / 100) * (hours / 8760)
-    : 0
   const apiPositionPnlUsd = Number(myPosition?.pnlUsd)
-  const safeEarnedUsd = Number.isFinite(apiPositionPnlUsd)
-    ? apiPositionPnlUsd
-    : Number.isFinite(positionEarnedUsd) ? positionEarnedUsd : 0
+  const hasPositionPnl = Boolean(myPosition) && Number.isFinite(apiPositionPnlUsd)
+  const safeEarnedUsd = hasPositionPnl ? apiPositionPnlUsd : 0
   const voteControlsDisabled = voting || !myPosition || !canSign || voteScoreStatus !== 'ready'
   const trustedVotes = voteScoreStatus === 'loading' ? '...' : voteScoreStatus === 'ready' ? String(onChainVotes?.upvotes ?? 0) : '--'
   const riskyVotes = voteScoreStatus === 'loading' ? '...' : voteScoreStatus === 'ready' ? String(onChainVotes?.downvotes ?? 0) : '--'
@@ -565,8 +553,8 @@ export function PoolDetailsView({
     }
   }
 
-  // Safe numbers to prevent runtime crashes (black screen) when API pools miss properties
-  const safeTvlRaw = Number.isFinite(Number(pool.tvlRaw)) ? Number(pool.tvlRaw) : 100_000
+  // Missing backend metrics stay unavailable instead of being replaced with demo values.
+  const safeTvlRaw = Number.isFinite(Number(pool.tvlRaw)) ? Number(pool.tvlRaw) : 0
 
   const apiDashboard = dashboardState.status === 'success' ? dashboardState.data : undefined
   const vaultOverview = apiDashboard?.vaultOverview
@@ -641,7 +629,7 @@ export function PoolDetailsView({
 
     if (!isTestnet) {
       setTxState('error')
-      setTxMessage('Switch Freighter to Testnet to run demo transactions.')
+      setTxMessage('Switch Freighter to Testnet to continue.')
       return
     }
 
@@ -666,7 +654,7 @@ export function PoolDetailsView({
       recordPosition({
         amount: Number.isFinite(Number(amount)) ? Number(amount) : 0,
         asset: pool.asset || 'XLM',
-        hash: result.hash || 'tx_hash',
+        hash: result.hash,
         protocol: pool.protocol || 'Soroswap AMM',
         status: result.status || 'SUCCESS',
         timestamp: new Date().toLocaleTimeString(),
@@ -748,9 +736,17 @@ export function PoolDetailsView({
                 <h1 className="text-xl font-bold text-white sm:text-2xl">
                   {pool.protocol} {pool.asset} Prime
                 </h1>
-                <span className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-xs font-semibold text-[#F2C12E]">
-                  {pool.risk === 'Moderate' ? 'Balanced' : pool.risk}
-                </span>
+                {riskState.status === 'success' ? (
+                  <span className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-xs font-semibold text-[#F2C12E]">
+                    {riskState.data.riskLevel === 'MEDIUM'
+                      ? 'Balanced'
+                      : riskState.data.riskLevel === 'LOW' ? 'Conservative' : 'Aggressive'}
+                  </span>
+                ) : (
+                  <span className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 text-xs font-medium text-[#7D899A]">
+                    {riskState.status === 'loading' || riskState.status === 'idle' ? 'Loading risk data' : 'Risk unavailable'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -831,7 +827,7 @@ export function PoolDetailsView({
       ) : (
         <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-white sm:text-2xl">${suppliedUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="font-mono text-xl font-extrabold text-white sm:text-2xl">{hasPositionValue ? `$${suppliedUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}</p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Position Value</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
@@ -842,11 +838,11 @@ export function PoolDetailsView({
             <p className="mt-1 text-xs text-[#9CA3AF]">Staked Shares</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">+${safeEarnedUsd.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">{hasPositionPnl ? `+$${safeEarnedUsd.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : '--'}</p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Interest Earned</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">+${(suppliedUsdValue * (supplyApy / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">{hasPositionValue ? `+$${(suppliedUsdValue * (supplyApy / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : '--'}</p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Daily Interest</p>
           </div>
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
@@ -1028,7 +1024,7 @@ export function PoolDetailsView({
                 ) : (
                   <div>
                     <div className="mb-6 flex items-center justify-between">
-                      <span className="text-sm text-[#9CA3AF]">Composite Health Score</span>
+                      <span className="text-sm text-[#9CA3AF]">Health Score</span>
                       <span className="font-mono text-xl font-bold text-[#16A34A]">{riskState.data.compositeScore} / 100</span>
                     </div>
                     <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
@@ -1218,17 +1214,13 @@ export function PoolDetailsView({
                             }
                             const amountDisplay = Number.isFinite(rawAmount) ? rawAmount.toFixed(2) : '0.00'
 
-                            let valUsd = '$0.00'
+                            let valUsd = '--'
                             const rawUsd = item.usdValue ?? item.valueUsd ?? item.value ?? item.usd_value
                             if (rawUsd !== undefined && rawUsd !== null && rawUsd !== '' && rawUsd !== 0 && rawUsd !== '0' && rawUsd !== '$0.00' && rawUsd !== amountDisplay && Number(rawUsd) !== rawAmount) {
                               const parsedUsd = typeof rawUsd === 'number' ? rawUsd : parseFloat(String(rawUsd).replace(/[^0-9.-]+/g, ''))
                               if (Number.isFinite(parsedUsd) && parsedUsd > 0) {
                                 valUsd = `$${parsedUsd.toFixed(2)}`
                               }
-                            }
-                            if (valUsd === '$0.00' && rawAmount > 0) {
-                              const tokenPrice = assetCode === 'XLM' ? 0.12 : assetCode === 'USDC' || assetCode === 'EURC' ? 1 : (pool.asset === 'XLM' ? 0.12 : 1)
-                              valUsd = `$${(rawAmount * tokenPrice).toFixed(2)}`
                             }
 
                             let txHash = String(item.hash || item.txHash || item.transactionHash || item.transaction_hash || item.tx_hash || item.txId || item.tx_id || item.xdrHash || item.signature || '')
@@ -1337,7 +1329,7 @@ export function PoolDetailsView({
               {isLP && <DepositModeToggle mode={depositMode} onChange={setDepositMode} />}
               <div className="mb-3 flex items-center justify-between text-xs">
                 <span className="font-medium text-[#9CA3AF]">You Deposit</span>
-                <span className="font-mono text-[#9CA3AF]">~${usdValue.toFixed(2)}</span>
+                <span className="font-mono text-[#9CA3AF]">--</span>
               </div>
 
               <div className="rounded-2xl border border-white/[0.08] bg-[#161622] p-4">
@@ -1439,7 +1431,7 @@ export function PoolDetailsView({
             <>
               <div className="mb-3 flex items-center justify-between text-xs">
                 <span className="font-medium text-[#9CA3AF]">You Withdraw</span>
-                <span className="font-mono text-[#9CA3AF]">~${withdrawUsdValue.toFixed(2)}</span>
+                <span className="font-mono text-[#9CA3AF]">--</span>
               </div>
 
               <div className="rounded-2xl border border-white/[0.08] bg-[#161622] p-4">

@@ -260,7 +260,7 @@ export function Header({ activePage, onPageChange, onToggleTerminal, unreadAlert
                 </a>
               </li>
             ))}
-            <li>
+            <li className="hidden md:block">
               <button
                 className="flex h-10 w-full items-center gap-2 rounded-lg px-4 text-left text-sm font-normal text-[#9CA3AF] transition hover:bg-white/[0.04] hover:text-white md:w-auto"
                 onClick={() => {

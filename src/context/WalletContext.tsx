@@ -37,7 +37,8 @@ function loadStoredWalletSession(): StoredWalletSession | null {
     const raw = localStorage.getItem(WALLET_SESSION_STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as StoredWalletSession
-      if (parsed && typeof parsed.publicKey === 'string' && parsed.publicKey.startsWith('G') && parsed.publicKey.length === 56) {
+      const isTestnet = parsed?.networkPassphrase?.toLowerCase().includes('test') === true
+      if (parsed && isTestnet && typeof parsed.publicKey === 'string' && parsed.publicKey.startsWith('G') && parsed.publicKey.length === 56) {
         return parsed
       }
     }
@@ -84,15 +85,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const networkInfo = await StellarWalletsKit.getNetwork()
       const passphrase = networkInfo.networkPassphrase
 
-      // Map network passphrase to Horizon / Soroban RPC URLs
       const isTestnet = passphrase.toLowerCase().includes('test')
-      const resolvedNetworkUrl = isTestnet
-        ? import.meta.env.VITE_HORIZON_TESTNET_URL || 'https://horizon-testnet.stellar.org'
-        : import.meta.env.VITE_HORIZON_PUBLIC_URL || 'https://horizon.stellar.org'
-      const resolvedSorobanUrl = isTestnet
-        ? import.meta.env.VITE_SOROBAN_TESTNET_URL || 'https://soroban-testnet.stellar.org'
-        : import.meta.env.VITE_SOROBAN_PUBLIC_URL || 'https://soroban.stellar.org'
-      const resolvedNetwork = isTestnet ? 'TESTNET' : 'PUBLIC'
+      if (!isTestnet) {
+        await StellarWalletsKit.disconnect()
+        throw new Error('Terminal8 supports Stellar Testnet only. Switch your wallet network to Testnet and reconnect.')
+      }
+
+      const resolvedNetworkUrl = import.meta.env.VITE_HORIZON_TESTNET_URL || 'https://horizon-testnet.stellar.org'
+      const resolvedSorobanUrl = import.meta.env.VITE_SOROBAN_TESTNET_URL || 'https://soroban-testnet.stellar.org'
+      const resolvedNetwork = 'TESTNET'
 
       setPublicKey(address)
       setNetwork(resolvedNetwork)

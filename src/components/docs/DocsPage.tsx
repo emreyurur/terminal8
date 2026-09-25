@@ -179,7 +179,7 @@ export function DocsPage({ onOpenDashboard }: { onOpenDashboard: () => void }) {
               integrations are represented by the services used by the application.
             </InfoBlock>
             <InfoBlock title="My Positions">
-              Active positions show supplied value, APY and estimated interest earned. Manage opens the
+              Active positions show API-reported supplied value, APY and earned interest. Manage opens the
               deposit and withdrawal controls for that vault.
             </InfoBlock>
             <InfoBlock title="Position persistence">

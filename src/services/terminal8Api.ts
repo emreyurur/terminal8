@@ -1,6 +1,13 @@
 const rawApiBase = import.meta.env.VITE_API_BASE_URL || 'https://batuhantekin.icu/stellar/'
 export const API_BASE = rawApiBase.endsWith('/') ? rawApiBase : `${rawApiBase}/`
-export const HORIZON_URL = import.meta.env.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org'
+export const HORIZON_URL = import.meta.env.VITE_HORIZON_TESTNET_URL || 'https://horizon-testnet.stellar.org'
+export const TESTNET_NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015'
+
+export function assertTestnetPassphrase(networkPassphrase: string): void {
+  if (networkPassphrase !== TESTNET_NETWORK_PASSPHRASE) {
+    throw new Error('Terminal8 rejected a non-Testnet transaction.')
+  }
+}
 
 const JWT_STORAGE_KEY = 'terminal8_jwt_token'
 
@@ -168,6 +175,7 @@ export async function loginWithFreighterFlow(
   signTransactionFn: FreighterSignFn,
 ): Promise<string> {
   const challenge = await getAuthChallenge(publicKey)
+  assertTestnetPassphrase(challenge.networkPassphrase)
   const signedXdr = await normalizeSignedXdr(
     signTransactionFn,
     challenge.transaction,
@@ -263,7 +271,8 @@ export async function executeApiPoolTransaction({
     throw new Error('No XDR returned from transaction build API.')
   }
 
-  let networkPassphrase = buildRes.networkPassphrase || 'Test SDF Network ; September 2015'
+  let networkPassphrase = buildRes.networkPassphrase || TESTNET_NETWORK_PASSPHRASE
+  assertTestnetPassphrase(networkPassphrase)
   let signedXdr = await normalizeSignedXdr(signTransactionFn, buildRes.xdr, networkPassphrase, publicKey)
   let submitRes: HorizonSubmitResponse | undefined
 
@@ -275,12 +284,18 @@ export async function executeApiPoolTransaction({
       clearStoredJwtToken()
       jwt = await loginWithFreighterFlow(publicKey, signTransactionFn)
       buildRes = await buildTransactionFromApi(params, jwt)
-      networkPassphrase = buildRes.networkPassphrase || 'Test SDF Network ; September 2015'
+      networkPassphrase = buildRes.networkPassphrase || TESTNET_NETWORK_PASSPHRASE
+      assertTestnetPassphrase(networkPassphrase)
       signedXdr = await normalizeSignedXdr(signTransactionFn, buildRes.xdr, networkPassphrase, publicKey)
       submitRes = await submitToHorizon(signedXdr)
     } else {
       throw err
     }
+  }
+
+  const transactionHash = submitRes?.hash || submitRes?.id
+  if (!transactionHash) {
+    throw new Error('Horizon confirmed the request without returning a transaction hash.')
   }
 
   // Trigger non-blocking portfolio sync so dashboard reflects new position immediately
@@ -295,7 +310,7 @@ export async function executeApiPoolTransaction({
         },
         body: JSON.stringify({
           userAddress: publicKey,
-          txHash: submitRes?.hash || submitRes?.id || `tx_${Date.now()}`,
+          txHash: transactionHash,
           poolId: params.poolId,
           amount: params.amountA ?? params.shareAmount ?? 0,
           action: params.action,
@@ -307,7 +322,7 @@ export async function executeApiPoolTransaction({
   }
 
   return {
-    hash: submitRes?.hash || submitRes?.id || `tx_${Date.now()}`,
+    hash: transactionHash,
     status: 'SUCCESS',
     xdr: buildRes.xdr,
   }
@@ -368,19 +383,86 @@ export interface PoolRiskResponse {
   volatilityScore: number
   apyScore: number
   compositeScore: number
-  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' | string
-  estimatedApy: number
+  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW'
+  estimatedApy?: number
+}
+
+function parseRiskNumber(value: unknown, field: string, max = 100): number {
+  const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
+  if (typeof parsed !== 'number' || !Number.isFinite(parsed) || parsed < 0 || parsed > max) {
+    throw new Error(`Invalid pool risk field: ${field}`)
+  }
+  return parsed
+}
+
+export function parsePoolRiskResponse(payload: unknown): PoolRiskResponse {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Invalid pool risk response')
+  }
+
+  const data = payload as Record<string, unknown>
+  const riskLevel = String(data.riskLevel ?? '').toUpperCase()
+  if (!['LOW', 'MEDIUM', 'HIGH'].includes(riskLevel)) {
+    throw new Error('Invalid pool risk field: riskLevel')
+  }
+
+  const estimatedApy = data.estimatedApy == null
+    ? undefined
+    : parseRiskNumber(data.estimatedApy, 'estimatedApy', Number.MAX_SAFE_INTEGER)
+
+  return {
+    poolId: String(data.poolId ?? ''),
+    trustScore: parseRiskNumber(data.trustScore, 'trustScore'),
+    tvlScore: parseRiskNumber(data.tvlScore, 'tvlScore'),
+    volatilityScore: parseRiskNumber(data.volatilityScore, 'volatilityScore'),
+    apyScore: parseRiskNumber(data.apyScore, 'apyScore'),
+    compositeScore: parseRiskNumber(data.compositeScore, 'compositeScore'),
+    riskLevel: riskLevel as PoolRiskResponse['riskLevel'],
+    estimatedApy,
+  }
 }
 
 /**
  * Fetch Risk & Trust Score details for a specific pool
  */
-export async function fetchPoolRisk(poolId: string): Promise<PoolRiskResponse> {
+export async function fetchPoolRisk(poolId: string, signal?: AbortSignal): Promise<PoolRiskResponse> {
   const res = await fetch(`${API_BASE}api/v1/pools/${encodeURIComponent(poolId)}/risk`, {
     headers: { accept: 'application/json' },
+    signal,
   })
   if (!res.ok) {
     throw new Error(`Failed to fetch pool risk (${res.status})`)
+  }
+  return parsePoolRiskResponse(await res.json())
+}
+
+export interface PoolDashboardResponse {
+  vaultOverview?: {
+    totalSupplied: number
+    totalBorrowed: number
+    utilization: number
+    supplyApy: number
+    supplyApy90dAvg: number
+  }
+  strategyOverview?: {
+    name: string
+    profile: string
+    description: string
+  }
+  chartData?: Array<{
+    timestamp: string
+    supplyApy: number
+    totalSupply: number
+  }>
+}
+
+export async function fetchPoolDashboard(poolId: string, signal?: AbortSignal): Promise<PoolDashboardResponse> {
+  const res = await fetch(`${API_BASE}api/v1/pools/${encodeURIComponent(poolId)}/dashboard`, {
+    headers: { accept: 'application/json' },
+    signal,
+  })
+  if (!res.ok) {
+    throw new Error(`Failed to fetch pool dashboard (${res.status})`)
   }
   return res.json()
 }

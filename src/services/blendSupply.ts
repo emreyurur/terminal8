@@ -36,7 +36,7 @@ export async function executeBlendTestnetSupply({
   }
 
   if (!networkPassphrase.toLowerCase().includes('test')) {
-    throw new Error('Real Blend demo is enabled for Testnet only. Switch Freighter to Testnet.')
+    throw new Error('Blend supply is enabled for Testnet only. Switch Freighter to Testnet.')
   }
 
   const horizon = new Horizon.Server(horizonUrl)

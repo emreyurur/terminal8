@@ -1,4 +1,4 @@
-import { API_BASE, clearStoredJwtToken, getStoredJwtToken, loginWithFreighterFlow, submitToHorizon } from './terminal8Api'
+import { API_BASE, assertTestnetPassphrase, clearStoredJwtToken, getStoredJwtToken, loginWithFreighterFlow, submitToHorizon } from './terminal8Api'
 import { signToString, type FreighterSignFn } from './terminal8Api'
 
 export type SingleAssetPlan = {
@@ -72,7 +72,9 @@ export async function previewSingleAssetDeposit(
     res = await requestBuild(params, jwt)
   }
   if (!res.ok) throw new Error(await errorText(res))
-  return res.json()
+  const build = await res.json() as SingleAssetBuild
+  assertTestnetPassphrase(build.networkPassphrase)
+  return build
 }
 
 /** Signs the prepared transaction and submits it. One signature covers trustlines, swap, and deposit. */
@@ -84,7 +86,8 @@ export async function submitSingleAssetDeposit(
 ): Promise<{ hash: string }> {
   const signed = await signToString(sign, built.xdr, built.networkPassphrase, publicKey)
   const res = await submitToHorizon(signed)
-  const hash = res.hash ?? res.id ?? `tx_${Date.now()}`
+  const hash = res.hash ?? res.id
+  if (!hash) throw new Error('Horizon confirmed the request without returning a transaction hash.')
 
   // Best effort: keep the backend portfolio in step, a failure must not hide a confirmed deposit.
   try {

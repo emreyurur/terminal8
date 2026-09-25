@@ -48,11 +48,6 @@ function formatElapsed(ms: number) {
   return `${Math.floor(hours / 24)}d`
 }
 
-function estimateEarned(position: LocalPosition) {
-  const elapsedHours = Math.max(0, Date.now() - position.openedAt) / 3_600_000
-  return position.amount * (position.apy / 100) * (elapsedHours / 8_760)
-}
-
 function resolvePool(selector: string | undefined, pools: DeFiPool[]): DeFiPool | undefined {
   if (!selector) return undefined
   const index = Number(selector) - 1
@@ -79,8 +74,9 @@ const commands: Record<string, Handler> = {
     log(`  ${pad('#', 3)}${pad('Protocol', 20)}${pad('Asset', 9)}${pad('Supplied', 12)}${pad('APY', 8)}${pad('Earned', 13)}Age`, emit)
     log(`  ${'─'.repeat(72)}`, emit)
     ctx.positions.forEach((position, index) => {
+      const earned = Number.isFinite(position.pnlUsd) ? `+$${Number(position.pnlUsd).toFixed(4)}` : '--'
       ok(
-        `  ${pad(String(index + 1), 3)}${pad(position.protocol, 20)}${pad(position.asset, 9)}${pad(position.amount.toFixed(2), 12)}${pad(`${position.apy.toFixed(2)}%`, 8)}${pad(`+${estimateEarned(position).toFixed(4)}`, 13)}${formatElapsed(Date.now() - position.openedAt)}`,
+        `  ${pad(String(index + 1), 3)}${pad(position.protocol, 20)}${pad(position.asset, 9)}${pad(position.amount.toFixed(2), 12)}${pad(`${position.apy.toFixed(2)}%`, 8)}${pad(earned, 13)}${formatElapsed(Date.now() - position.openedAt)}`,
         emit,
       )
     })
@@ -108,7 +104,7 @@ const commands: Record<string, Handler> = {
     log(`  Pool       ${position.poolId}`, emit)
     log(`  Supplied   ${position.amount.toFixed(2)} ${position.asset}`, emit)
     log(`  APY        ${position.apy.toFixed(2)}%`, emit)
-    ok(`  Earned     +${estimateEarned(position).toFixed(4)} ${position.asset} (estimated)`, emit)
+    ok(`  Earned     ${Number.isFinite(position.pnlUsd) ? `+$${Number(position.pnlUsd).toFixed(4)}` : 'Unavailable'}`, emit)
     log(`  Age        ${formatElapsed(Date.now() - position.openedAt)}`, emit)
     log(`  Status     ${position.status}`, emit)
     log(`  TX         ${position.hash || 'Unavailable'}`, emit)
