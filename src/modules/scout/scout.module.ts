@@ -48,13 +48,12 @@ export class ScoutModule implements OnModuleInit {
       },
     );
 
-    // İlk çalıştırmada 30 saniye sonra bir snapshot tetikle (sync-pools'un bitmesini beklesin)
+    // İlk çalıştırmada 3 dakika sonra bir snapshot tetikle (sync-pools'un bitmesini beklesin)
     await this.scoutQueue.add(
       "daily-snapshot",
       {},
       {
-        delay: 30_000,
-        jobId: "initial-snapshot", // Tekrar başlatıldığında çakışmasın
+        delay: 180_000,
       },
     );
   }
