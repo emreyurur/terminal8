@@ -247,7 +247,7 @@ export class OracleService implements OnModuleInit {
   async getSupportedAssets(): Promise<OracleAsset[]> {
     return [
       { code: "XLM", issuer: null },
-      { code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }, // mainnet (Centre/Circle)
+      { code: this.config.network.usdc.code, issuer: this.config.network.usdc.issuer },
     ];
   }
 
