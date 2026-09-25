@@ -1,5 +1,7 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Inject } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import { ConfigType } from "@nestjs/config";
+import { appConfig } from "../../config/app.config";
 import { Repository } from "typeorm";
 import { LiquidityPool } from "./entities/liquidity-pool.entity";
 import { PoolSnapshot } from "./entities/pool-snapshot.entity";
@@ -21,6 +23,7 @@ export class ScoutService {
     private readonly horizonClient: HorizonClient,
     private readonly redisService: RedisService,
     private readonly oracleService: OracleService,
+    @Inject(appConfig.KEY) private config: ConfigType<typeof appConfig>,
   ) { }
 
   async syncLiquidityPools() {
@@ -138,7 +141,9 @@ export class ScoutService {
 
         try {
           const axios = require("axios");
-          const res = await axios.get(`https://api.stellar.expert/explorer/public/liquidity-pool/${pool.id}`);
+          const isTestnet = this.config.networkPassphrase.includes("Test");
+      const networkType = isTestnet ? "testnet" : "public";
+      const res = await axios.get(`https://api.stellar.expert/explorer/${networkType}/liquidity-pool/${pool.id}`);
           
           if (res.data && res.data.volume && res.data.volume.length === 2) {
             volumeA = (res.data.volume[0]["1d"] || 0) / 10000000;
@@ -349,7 +354,9 @@ export class ScoutService {
     let vol24h = 0;
     try {
       const axios = require("axios");
-      const res = await axios.get(`https://api.stellar.expert/explorer/public/liquidity-pool/${pool.id}`);
+      const isTestnet = this.config.networkPassphrase.includes("Test");
+      const networkType = isTestnet ? "testnet" : "public";
+      const res = await axios.get(`https://api.stellar.expert/explorer/${networkType}/liquidity-pool/${pool.id}`);
       if (res.data && res.data.volume && res.data.volume.length === 2) {
         const volumeA = (res.data.volume[0]["1d"] || 0) / 10000000;
         const volumeB = (res.data.volume[1]["1d"] || 0) / 10000000;
