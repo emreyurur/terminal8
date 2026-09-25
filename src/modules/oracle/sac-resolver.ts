@@ -18,7 +18,12 @@ export function resolveSacAddress(
 
 // Reflector'a parametre olarak geçilecek format: SEP-40 Asset enum'u.
 // Enum: Asset::Stellar(Address) veya Asset::Other(Symbol)
-export function toReflectorParam(sacAddress: string): xdr.ScVal {
+export function toReflectorParam(sacAddress: string, assetCode: string, isMainnet: boolean): xdr.ScVal {
+  if (!isMainnet) {
+    const otherSym = xdr.ScVal.scvSymbol("Other");
+    const assetName = xdr.ScVal.scvSymbol(assetCode);
+    return xdr.ScVal.scvVec([otherSym, assetName]);
+  }
   const stellarSym = xdr.ScVal.scvSymbol("Stellar");
   const addressVal = xdr.ScVal.scvAddress(
     Address.fromString(sacAddress).toScAddress()

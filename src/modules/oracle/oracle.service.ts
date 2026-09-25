@@ -124,7 +124,7 @@ export class OracleService implements OnModuleInit {
       asset.issuer,
       this.config.networkPassphrase,
     );
-    const priceData = await this.fetchPriceFromChain(sacAddress);
+    const priceData = await this.fetchPriceFromChain(sacAddress, asset.code);
 
     if (priceData) {
       const cacheKey = `${ORACLE_CACHE_PREFIX}:${asset.code}:${asset.issuer ?? "native"}`;
@@ -138,11 +138,12 @@ export class OracleService implements OnModuleInit {
 
   private async fetchPriceFromChain(
     sacAddress: string,
+    assetCode: string,
   ): Promise<PriceData | null> {
     try {
       const contract = new Contract(this.config.reflectorContractId);
       const server = new rpc.Server(this.config.sorobanRpcUrl);
-      const param = toReflectorParam(sacAddress);
+      const param = toReflectorParam(sacAddress, assetCode, this.config.isMainnet);
 
       // Dummy account
       const sourceAccount = new Account(
