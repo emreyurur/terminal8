@@ -299,11 +299,11 @@ export class ScoutService {
     let profile = "Balanced";
     try {
       const riskScore = await this.poolRepository.manager.query(
-        `SELECT risk_level FROM risk_scores WHERE pool_id = $1 ORDER BY calculated_at DESC LIMIT 1`,
+        `SELECT "riskLevel" FROM risk_scores WHERE "poolId" = $1 ORDER BY "calculatedAt" DESC LIMIT 1`,
         [poolId],
       );
       if (riskScore && riskScore.length > 0) {
-        profile = riskScore[0].risk_level;
+        profile = riskScore[0].riskLevel;
       }
     } catch (e) {
       // Ignore if table doesn't exist or error
