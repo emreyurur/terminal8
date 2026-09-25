@@ -97,15 +97,11 @@ export class HistoryService {
   async syncTransactions() {
     this.logger.log('Starting historical transaction sync...');
     
-    // Fetch top 30 pools + pools that active users have interacted with
+    // Fetch active tracked pools + pools that active users have interacted with
     const poolsToSyncResult = await this.dataSource.query(`
-      SELECT id FROM (
-        SELECT id FROM liquidity_pools ORDER BY "totalTrustlines" DESC LIMIT 30
-      ) as top_pools
+      SELECT id FROM liquidity_pools WHERE "isActive" = true
       UNION
-      SELECT "poolId" as id FROM user_positions
-      UNION
-      SELECT "poolId" as id FROM transaction_history WHERE "poolId" IS NOT NULL
+      SELECT "poolId" as id FROM user_positions WHERE "poolId" IS NOT NULL
     `);
 
     const targetPoolIds: string[] = poolsToSyncResult.map((p: any) => p.id);
