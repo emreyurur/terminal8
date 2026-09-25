@@ -211,13 +211,18 @@ export class OracleService implements OnModuleInit {
       this.dynamicallyRequestedAssets.set(cacheKey, { code: assetCode, issuer });
     }
 
-    const priceData = await this.redis.get<PriceData>(cacheKey);
+    let priceData = await this.redis.get<PriceData>(cacheKey);
 
     if (!priceData) {
       this.logger.verbose(
-        `No cached price for ${assetCode}. Returning null.`,
+        `No cached price for ${assetCode}. Fetching from Oracle synchronously...`,
       );
-      return null;
+      await this.fetchAndCacheSinglePrice({ code: assetCode, issuer });
+      priceData = await this.redis.get<PriceData>(cacheKey);
+      
+      if (!priceData) {
+        return null;
+      }
     }
 
     return priceData.price;
