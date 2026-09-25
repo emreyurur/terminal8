@@ -112,6 +112,9 @@ export class OracleService implements OnModuleInit {
           this.logger.warn(`Cache warming failed for asset: ${result.reason}`);
         }
       }
+      
+      // Proactive delay between chunks to avoid 429 Too Many Requests
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
 
