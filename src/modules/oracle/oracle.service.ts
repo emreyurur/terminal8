@@ -192,6 +192,8 @@ export class OracleService implements OnModuleInit {
 
   // --- Public Methods (Client Okuma) ---
 
+  private dynamicallyRequestedAssets = new Map<string, OracleAsset>();
+
   /**
    * Retrieves the USD price of an asset from the Redis cache.
    * Never blocks on an RPC call.
@@ -201,6 +203,17 @@ export class OracleService implements OnModuleInit {
     issuer?: string | null,
   ): Promise<number | null> {
     const cacheKey = `${ORACLE_CACHE_PREFIX}:${assetCode}:${issuer ?? "native"}`;
+    
+    if (!this.dynamicallyRequestedAssets.has(cacheKey)) {
+      this.dynamicallyRequestedAssets.set(cacheKey, { code: assetCode, issuer });
+      // Don't await, just trigger a background fetch if not in cache so it's ready soon
+      this.redis.get(cacheKey).then(cached => {
+        if (!cached) {
+          this.fetchAndCacheSinglePrice({ code: assetCode, issuer }).catch(() => {});
+        }
+      });
+    }
+
     const priceData = await this.redis.get<PriceData>(cacheKey);
 
     if (!priceData) {
@@ -220,10 +233,21 @@ export class OracleService implements OnModuleInit {
     assets: OracleAsset[],
   ): Promise<Map<string, number>> {
     const prices = new Map<string, number>();
+    const keys = [];
 
-    const keys = assets.map(
-      (a) => `${ORACLE_CACHE_PREFIX}:${a.code}:${a.issuer ?? "native"}`,
-    );
+    for (const a of assets) {
+      const key = `${ORACLE_CACHE_PREFIX}:${a.code}:${a.issuer ?? "native"}`;
+      keys.push(key);
+      
+      if (!this.dynamicallyRequestedAssets.has(key)) {
+        this.dynamicallyRequestedAssets.set(key, a);
+        this.redis.get(key).then(cached => {
+          if (!cached) {
+            this.fetchAndCacheSinglePrice(a).catch(() => {});
+          }
+        });
+      }
+    }
 
     const results = await Promise.all(
       keys.map((key) => this.redis.get<PriceData>(key))
@@ -240,15 +264,25 @@ export class OracleService implements OnModuleInit {
   }
 
   /**
-   * Stub for supported assets. In a real scenario, this could query the `assets()`
-   * method of the SEP-40 contract and cache it. For now, we return a hardcoded list
-   * of commonly used assets or rely on our scout database to tell us what to fetch.
+   * Returns XLM, USDC, and any other assets that have been requested dynamically.
    */
   async getSupportedAssets(): Promise<OracleAsset[]> {
-    return [
+    const baseAssets: OracleAsset[] = [
       { code: "XLM", issuer: null },
       { code: this.config.network.usdc.code, issuer: this.config.network.usdc.issuer },
     ];
+    
+    const allAssetsMap = new Map<string, OracleAsset>();
+    
+    for (const a of baseAssets) {
+      allAssetsMap.set(`${a.code}:${a.issuer ?? "native"}`, a);
+    }
+    
+    for (const [key, a] of this.dynamicallyRequestedAssets.entries()) {
+      allAssetsMap.set(key, a);
+    }
+
+    return Array.from(allAssetsMap.values());
   }
 
   private chunkArray<T>(arr: T[], size: number): T[][] {
