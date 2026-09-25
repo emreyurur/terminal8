@@ -144,6 +144,8 @@ export class HistoryService {
           let lastPagingToken = state.lastPagingToken;
 
           try {
+            const transactionsToInsert: any[] = [];
+
             for (const op of records) {
               let txType: TransactionType;
               let assetA = '';
@@ -189,7 +191,7 @@ export class HistoryService {
               if (assetA && assetA.includes(':')) assetA = assetA.split(':')[0];
               if (assetB && assetB.includes(':')) assetB = assetB.split(':')[0];
 
-              await this.logTransaction({
+              transactionsToInsert.push({
                 operationId: op.id,
                 occurredAt: new Date(op.created_at),
                 sharesAmount,
@@ -201,10 +203,19 @@ export class HistoryService {
                 assetB: assetB,
                 amountB: amountB,
                 tx: op.transaction_hash,
-              }, queryRunner.manager);
+              });
 
               addedCount++;
               lastPagingToken = op.paging_token;
+            }
+
+            if (transactionsToInsert.length > 0) {
+              await queryRunner.manager.createQueryBuilder()
+                .insert()
+                .into(TransactionHistory)
+                .values(transactionsToInsert)
+                .orIgnore() // ON CONFLICT DO NOTHING
+                .execute();
             }
 
             state.lastPagingToken = lastPagingToken;

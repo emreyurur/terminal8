@@ -172,12 +172,18 @@ export class ScoutService {
 
   async getPools(page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
-    const [data, total] = await this.poolRepository.findAndCount({
-      where: { isActive: true },
-      skip,
-      take: limit,
-      order: { totalTrustlines: "DESC" }, // Daha çok kullanılan havuzlar üstte
-    });
+    const [data, total] = await this.poolRepository
+      .createQueryBuilder("pool")
+      .where("pool.isActive = :isActive", { isActive: true })
+      .addSelect(
+        `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
+        'isUsdcXlm'
+      )
+      .orderBy('"isUsdcXlm"', 'DESC')
+      .addOrderBy('pool.totalTrustlines', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
     return {
       data,
@@ -220,11 +226,22 @@ export class ScoutService {
         )`,
         'matchScore'
       )
+      .addSelect(
+        `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
+        'isUsdcXlm'
+      )
         .setParameter('userAssets', userAssets)
-        .orderBy('"matchScore"', 'DESC')
+        .orderBy('"isUsdcXlm"', 'DESC')
+        .addOrderBy('"matchScore"', 'DESC')
         .addOrderBy('pool.totalTrustlines', 'DESC');
     } else {
-      queryBuilder.orderBy('pool.totalTrustlines', 'DESC');
+      queryBuilder
+        .addSelect(
+          `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
+          'isUsdcXlm'
+        )
+        .orderBy('"isUsdcXlm"', 'DESC')
+        .addOrderBy('pool.totalTrustlines', 'DESC');
     }
 
     // 4. Paginate
