@@ -28,8 +28,21 @@ export class ScoutService {
 
   async syncLiquidityPools() {
     this.logger.log("Starting liquidity pools sync...");
-    const pools = await this.horizonClient.fetchAllPools();
-    this.logger.log(`Fetched ${pools.length} pools from Horizon`);
+    const allPools = await this.horizonClient.fetchAllPools();
+    
+    // Filter out fake USDC pools (Testnet protection)
+    const officialUsdcIssuer = this.config.network.usdc.issuer;
+    const pools = allPools.filter(p => {
+      for (const r of p.reserves) {
+        if (r.asset !== "native" && r.asset.startsWith("USDC:")) {
+          const [, issuer] = r.asset.split(":");
+          if (issuer !== officialUsdcIssuer) return false;
+        }
+      }
+      return true;
+    });
+
+    this.logger.log(`Fetched ${allPools.length} pools from Horizon, ${pools.length} valid pools after filtering`);
 
     // Calculate approximate TVL to find the truly valuable pools
     const getApproxTvl = (p: any) => {
