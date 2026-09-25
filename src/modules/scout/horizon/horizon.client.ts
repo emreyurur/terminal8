@@ -34,9 +34,10 @@ export class HorizonClient {
         return res;
       },
       async (error) => {
-        if (error.response?.status === 429) {
-          this.logger.debug("Rate limit hit. Retrying after 2s delay...");
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+        const status = error.response?.status;
+        if (status === 429 || status === 503 || status === 504) {
+          this.logger.debug(`Horizon API overloaded (status ${status}). Retrying after 3s delay...`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
           return this.axios(error.config);
         }
         throw error;
