@@ -16,7 +16,7 @@ import { LiquidityPool } from "./entities/liquidity-pool.entity";
 @ApiTags("pools")
 @Controller("api/v1/pools")
 export class ScoutController {
-  constructor(private readonly scoutService: ScoutService) {}
+  constructor(private readonly scoutService: ScoutService) { }
 
   @Get()
   @ApiOperation({ summary: "Get all active liquidity pools with pagination" })
@@ -99,7 +99,7 @@ export class ScoutController {
   @ApiResponse({ status: 201, description: "Snapshot process started" })
   async triggerSnapshot() {
     // Süreç arka planda devam eder, kullanıcıya hemen cevap döner
-    this.scoutService.takeDailySnapshots().catch(() => {});
+    this.scoutService.takeDailySnapshots().catch(() => { });
     return { message: "Snapshot process started in background" };
   }
 }
