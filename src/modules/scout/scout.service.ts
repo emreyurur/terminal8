@@ -110,22 +110,20 @@ export class ScoutService {
 
     for (const pool of activePools) {
       try {
-        const trades = await this.horizonClient.fetchPoolTrades(pool.id, 24);
-
         let volumeA = 0;
         let volumeB = 0;
 
-        for (const trade of trades) {
-          const baseCode = trade.base_asset_type === "native" ? "XLM" : trade.base_asset_code;
-          const baseIssuer = trade.base_asset_issuer || null;
-
-          if (baseCode === pool.assetACode && baseIssuer === pool.assetAIssuer) {
-            volumeA += parseFloat(trade.base_amount);
-            volumeB += parseFloat(trade.counter_amount);
-          } else {
-            volumeA += parseFloat(trade.counter_amount);
-            volumeB += parseFloat(trade.base_amount);
+        try {
+          const axios = require("axios");
+          const res = await axios.get(`https://api.stellar.expert/explorer/public/liquidity-pool/${pool.id}`);
+          
+          if (res.data && res.data.volume && res.data.volume.length === 2) {
+            volumeA = (res.data.volume[0]["1d"] || 0) / 10000000;
+            volumeB = (res.data.volume[1]["1d"] || 0) / 10000000;
           }
+        } catch (apiErr) {
+          this.logger.warn(`Failed to fetch 24h volume from Stellar Expert for pool ${pool.id}: ${apiErr.message}`);
+          // volumeA ve volumeB 0 kalır.
         }
 
         // OracleService kullanarak gerçek USD fiyatlarını çekiyoruz
