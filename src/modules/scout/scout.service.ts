@@ -28,15 +28,38 @@ export class ScoutService {
     const pools = await this.horizonClient.fetchAllPools();
     this.logger.log(`Fetched ${pools.length} pools from Horizon`);
 
-    // Sort pools by trustlines descending to categorize them
-    pools.sort((a, b) => Number(b.total_trustlines) - Number(a.total_trustlines));
+    // Calculate approximate TVL to find the truly valuable pools
+    const getApproxTvl = (p: any) => {
+      let tvl = 0;
+      let hasNative = false;
+      let hasUsdc = false;
 
-    // Select a mix of 30 pools: 20 safe (top), 5 moderate, 5 risky
-    const safePools = pools.slice(0, 20);
-    const moderatePools = pools.slice(100, 105); // Arbitrary offset for moderate
-    const riskyPools = pools.slice(1000, 1005); // Arbitrary offset for risky
+      for (const r of p.reserves) {
+        if (r.asset === "native") {
+          tvl += parseFloat(r.amount) * 0.1;
+          hasNative = true;
+        } else if (r.asset.includes("USDC")) {
+          tvl += parseFloat(r.amount) * 1;
+          hasUsdc = true;
+        } else if (r.asset.includes("AQUA")) {
+          tvl += parseFloat(r.amount) * 0.0005;
+        } else if (r.asset.includes("yXLM")) {
+          tvl += parseFloat(r.amount) * 0.1;
+        }
+      }
 
-    const selectedPools = [...safePools, ...moderatePools, ...riskyPools].filter(Boolean);
+      // User requested XLM/USDC to be always #1
+      if (hasNative && hasUsdc) {
+        tvl += 1000000000; 
+      }
+      return tvl;
+    };
+
+    // Sort pools by approximate USD value (descending)
+    pools.sort((a, b) => getApproxTvl(b) - getApproxTvl(a));
+
+    // Select the top 30 most valuable pools
+    const selectedPools = pools.slice(0, 30);
     const activePoolIds = new Set<string>();
 
     for (const poolData of selectedPools) {
@@ -312,22 +335,38 @@ export class ScoutService {
     let supplyApy = 0;
     let avg90dApy = 0;
     const chartData = [];
-
     let sumApy = 0;
 
+    // --- 1. Calculate Real-Time Dashboard Metrics ---
+    // Fetch live USD prices
+    const priceAUsd = (await this.oracleService.getUsdPrice(pool.assetACode, pool.assetAIssuer)) || 0;
+    const priceBUsd = (await this.oracleService.getUsdPrice(pool.assetBCode, pool.assetBIssuer)) || 0;
+    
+    // Live TVL
+    totalSupplied = parseFloat(pool.reserveA) * priceAUsd + parseFloat(pool.reserveB) * priceBUsd;
+
+    // Live 24h Volume from Stellar Expert
+    let vol24h = 0;
+    try {
+      const axios = require("axios");
+      const res = await axios.get(`https://api.stellar.expert/explorer/public/liquidity-pool/${pool.id}`);
+      if (res.data && res.data.volume && res.data.volume.length === 2) {
+        const volumeA = (res.data.volume[0]["1d"] || 0) / 10000000;
+        const volumeB = (res.data.volume[1]["1d"] || 0) / 10000000;
+        vol24h = volumeA * priceAUsd + volumeB * priceBUsd;
+      }
+    } catch (e) {
+      // Fallback to latest snapshot if Expert API fails
+      if (snapshots.length > 0) {
+        vol24h = parseFloat(snapshots[snapshots.length - 1].volume24hUsd || "0");
+      }
+    }
+
+    utilization = totalSupplied > 0 ? (vol24h / totalSupplied) * 100 : 0;
+    supplyApy = totalSupplied > 0 ? ((vol24h * (pool.feeBp / 10000) * 365) / totalSupplied) * 100 : 0;
+
+    // --- 2. Calculate Historical Chart Data ---
     if (snapshots.length > 0) {
-      const latest = snapshots[snapshots.length - 1];
-      totalSupplied = parseFloat(latest.tvlUsd || "0");
-
-      const vol24h = parseFloat(latest.volume24hUsd || "0");
-      utilization = totalSupplied > 0 ? (vol24h / totalSupplied) * 100 : 0;
-
-      // APY = (Volume * Fee * 365) / TVL
-      supplyApy =
-        totalSupplied > 0
-          ? ((vol24h * (pool.feeBp / 10000) * 365) / totalSupplied) * 100
-          : 0;
-
       for (const s of snapshots) {
         const t = parseFloat(s.tvlUsd || "0");
         const v = parseFloat(s.volume24hUsd || "0");
@@ -340,7 +379,6 @@ export class ScoutService {
           totalSupply: t,
         });
       }
-
       avg90dApy = sumApy / snapshots.length;
     }
 
