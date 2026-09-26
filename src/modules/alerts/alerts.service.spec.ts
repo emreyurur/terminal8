@@ -75,8 +75,8 @@ function setup(
   };
   const history: any = {
     calculateUserCostBasis: jest.fn(async () => ({
-      assetADeposited: "100",
-      assetBDeposited: "400",
+      costBasisA: "100",
+      costBasisB: "400",
     })),
   };
 
@@ -250,8 +250,8 @@ describe("AlertsService", () => {
         shares: 100,
       });
       il.history.calculateUserCostBasis.mockResolvedValue({
-        assetADeposited: "100",
-        assetBDeposited: "100",
+        costBasisA: "100",
+        costBasisB: "100",
       });
       await il.service.create(USER, {
         ...base,
