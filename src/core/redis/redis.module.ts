@@ -22,7 +22,10 @@ const redisOptions = (configService: ConfigService, db: number) => ({
       useFactory: async (configService: ConfigService) => ({
         store: redisStore,
         // Cache için varsayılan DB 0 (Upstash yalnızca 0 destekler)
-        ...redisOptions(configService, configService.get<number>("REDIS_CACHE_DB", 0)),
+        ...redisOptions(
+          configService,
+          configService.get<number>("REDIS_CACHE_DB", 0),
+        ),
       }),
     }),
     BullModule.forRootAsync({
@@ -30,7 +33,10 @@ const redisOptions = (configService: ConfigService, db: number) => ({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         // Queue broker için varsayılan DB 1 (Upstash'te REDIS_QUEUE_DB=0 ayarlanmalı)
-        connection: redisOptions(configService, configService.get<number>("REDIS_QUEUE_DB", 1)),
+        connection: redisOptions(
+          configService,
+          configService.get<number>("REDIS_QUEUE_DB", 1),
+        ),
       }),
     }),
   ],

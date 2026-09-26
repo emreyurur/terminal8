@@ -8,7 +8,13 @@ import {
   SEP40_DEFAULT_DECIMALS,
 } from "./oracle.constants";
 import { resolveSacAddress, toReflectorParam } from "./sac-resolver";
-import { Contract, rpc, scValToNative, Account, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  Contract,
+  rpc,
+  scValToNative,
+  Account,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
 
 @Injectable()
 export class OracleService implements OnModuleInit {
@@ -46,7 +52,7 @@ export class OracleService implements OnModuleInit {
       const server = new rpc.Server(this.config.sorobanRpcUrl);
 
       // Build a read-only transaction using server.prepareTransaction
-      // Wait, there is no buildReadOnlyTx in stellar-sdk out of the box. 
+      // Wait, there is no buildReadOnlyTx in stellar-sdk out of the box.
       // For simulateTransaction with a Contract.call, we can just build an un-signed transaction.
       // But actually, for simulateTransaction, you just need a transaction object.
       // We can use the simple approach of using server.simulateTransaction with a minimal tx.
@@ -55,7 +61,7 @@ export class OracleService implements OnModuleInit {
       // Let's implement a dummy transaction.
       const sourceAccount = new Account(
         "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-        "0"
+        "0",
       ); // Dummy account
 
       const tx = new TransactionBuilder(sourceAccount, {
@@ -72,7 +78,9 @@ export class OracleService implements OnModuleInit {
         this.decimals = scValToNative(result.result.retval);
         this.divisor = Math.pow(10, this.decimals);
         this.decimalsConfirmed = true;
-        this.logger.log(`Oracle decimals confirmed from chain: ${this.decimals}`);
+        this.logger.log(
+          `Oracle decimals confirmed from chain: ${this.decimals}`,
+        );
       } else {
         throw new Error("Simulation failed or returned no result");
       }
@@ -112,9 +120,9 @@ export class OracleService implements OnModuleInit {
           this.logger.warn(`Cache warming failed for asset: ${result.reason}`);
         }
       }
-      
+
       // Proactive delay between chunks to avoid 429 Too Many Requests
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 
@@ -128,11 +136,7 @@ export class OracleService implements OnModuleInit {
 
     if (priceData) {
       const cacheKey = `${ORACLE_CACHE_PREFIX}:${asset.code}:${asset.issuer ?? "native"}`;
-      await this.redis.set(
-        cacheKey,
-        priceData,
-        this.config.oracleStaleTtl,
-      );
+      await this.redis.set(cacheKey, priceData, this.config.oracleStaleTtl);
     }
   }
 
@@ -143,14 +147,18 @@ export class OracleService implements OnModuleInit {
     try {
       const contract = new Contract(this.config.reflectorContractId);
       const server = new rpc.Server(this.config.sorobanRpcUrl);
-      const param = toReflectorParam(sacAddress, assetCode, this.config.isMainnet);
+      const param = toReflectorParam(
+        sacAddress,
+        assetCode,
+        this.config.isMainnet,
+      );
 
       // Dummy account
       const sourceAccount = new Account(
         "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-        "0"
+        "0",
       );
-      
+
       const tx = new TransactionBuilder(sourceAccount, {
         fee: "100",
         networkPassphrase: this.config.networkPassphrase,
@@ -169,7 +177,7 @@ export class OracleService implements OnModuleInit {
       if (!parsed || !parsed.price || !parsed.timestamp) {
         return null;
       }
-      
+
       const price = parsed.price;
       const timestamp = parsed.timestamp;
 
@@ -207,9 +215,12 @@ export class OracleService implements OnModuleInit {
     issuer?: string | null,
   ): Promise<number | null> {
     const cacheKey = `${ORACLE_CACHE_PREFIX}:${assetCode}:${issuer ?? "native"}`;
-    
+
     if (!this.dynamicallyRequestedAssets.has(cacheKey)) {
-      this.dynamicallyRequestedAssets.set(cacheKey, { code: assetCode, issuer });
+      this.dynamicallyRequestedAssets.set(cacheKey, {
+        code: assetCode,
+        issuer,
+      });
     }
 
     let priceData = await this.redis.get<PriceData>(cacheKey);
@@ -220,7 +231,7 @@ export class OracleService implements OnModuleInit {
       );
       await this.fetchAndCacheSinglePrice({ code: assetCode, issuer });
       priceData = await this.redis.get<PriceData>(cacheKey);
-      
+
       if (!priceData) {
         return null;
       }
@@ -232,23 +243,21 @@ export class OracleService implements OnModuleInit {
   /**
    * Batch retrieves USD prices from the Redis cache.
    */
-  async getBatchUsdPrices(
-    assets: OracleAsset[],
-  ): Promise<Map<string, number>> {
+  async getBatchUsdPrices(assets: OracleAsset[]): Promise<Map<string, number>> {
     const prices = new Map<string, number>();
     const keys = [];
 
     for (const a of assets) {
       const key = `${ORACLE_CACHE_PREFIX}:${a.code}:${a.issuer ?? "native"}`;
       keys.push(key);
-      
+
       if (!this.dynamicallyRequestedAssets.has(key)) {
         this.dynamicallyRequestedAssets.set(key, a);
       }
     }
 
     const results = await Promise.all(
-      keys.map((key) => this.redis.get<PriceData>(key))
+      keys.map((key) => this.redis.get<PriceData>(key)),
     );
 
     for (let i = 0; i < results.length; i++) {
@@ -267,15 +276,18 @@ export class OracleService implements OnModuleInit {
   async getSupportedAssets(): Promise<OracleAsset[]> {
     const baseAssets: OracleAsset[] = [
       { code: "XLM", issuer: null },
-      { code: this.config.network.usdc.code, issuer: this.config.network.usdc.issuer },
+      {
+        code: this.config.network.usdc.code,
+        issuer: this.config.network.usdc.issuer,
+      },
     ];
-    
+
     const allAssetsMap = new Map<string, OracleAsset>();
-    
+
     for (const a of baseAssets) {
       allAssetsMap.set(`${a.code}:${a.issuer ?? "native"}`, a);
     }
-    
+
     for (const [key, a] of this.dynamicallyRequestedAssets.entries()) {
       allAssetsMap.set(key, a);
     }

@@ -7,7 +7,8 @@ export const appConfig = registerAs("app", () => {
   const network = resolveNetworkConstants(networkPassphrase);
 
   return {
-    horizonUrl: process.env.HORIZON_URL || "https://horizon-testnet.stellar.org",
+    horizonUrl:
+      process.env.HORIZON_URL || "https://horizon-testnet.stellar.org",
     networkPassphrase,
     isMainnet: network.isMainnet,
     network,
@@ -31,23 +32,31 @@ export const appConfig = registerAs("app", () => {
     poolCacheTtl: parseInt(process.env.POOL_CACHE_TTL || "300", 10),
     tomlCacheTtl: parseInt(process.env.TOML_CACHE_TTL || "86400", 10),
 
-    anchorHomeDomain: process.env.ANCHOR_HOME_DOMAIN || "tr-mock-anchor.fly.dev",
+    anchorHomeDomain:
+      process.env.ANCHOR_HOME_DOMAIN || "tr-mock-anchor.fly.dev",
     anchorAssetCode: process.env.ANCHOR_ASSET_CODE || "USDC",
 
     resendApiKey: process.env.RESEND_API_KEY || "",
-    alertFromEmail: process.env.ALERT_FROM_EMAIL || "Terminal8 <onboarding@resend.dev>",
+    alertFromEmail:
+      process.env.ALERT_FROM_EMAIL || "Terminal8 <onboarding@resend.dev>",
     alertsEnabled: process.env.ALERTS_ENABLED !== "false",
-    alertCheckIntervalMs: parseInt(process.env.ALERT_CHECK_INTERVAL_MS || "60000", 10),
+    alertCheckIntervalMs: parseInt(
+      process.env.ALERT_CHECK_INTERVAL_MS || "60000",
+      10,
+    ),
     maxAlertsPerUser: parseInt(process.env.MAX_ALERTS_PER_USER || "10", 10),
 
     jwtSecret: process.env.JWT_SECRET || "fallback-secret",
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
 
-    reflectorContractId: process.env.REFLECTOR_CONTRACT_ID || network.reflectorContractId,
+    reflectorContractId:
+      process.env.REFLECTOR_CONTRACT_ID || network.reflectorContractId,
     sorobanRpcUrl: process.env.SOROBAN_RPC_URL || network.sorobanRpcUrl,
     oracleCacheTtl: parseInt(process.env.ORACLE_CACHE_TTL || "60", 10),
     oracleStaleTtl: parseInt(process.env.ORACLE_STALE_TTL || "300", 10),
-    oracleStalenessLimit: parseInt(process.env.ORACLE_STALENESS_LIMIT || "3600", 10),
+    oracleStalenessLimit: parseInt(
+      process.env.ORACLE_STALENESS_LIMIT || "3600",
+      10,
+    ),
   };
 });
-

@@ -15,7 +15,9 @@ async function bootstrap() {
     const start = Date.now();
     res.on("finish", () => {
       const path = req.originalUrl.split("?")[0];
-      httpLog.log(`${req.method} ${path} ${res.statusCode} ${Date.now() - start}ms origin=${req.headers.origin ?? "-"}`);
+      httpLog.log(
+        `${req.method} ${path} ${res.statusCode} ${Date.now() - start}ms origin=${req.headers.origin ?? "-"}`,
+      );
     });
     next();
   });

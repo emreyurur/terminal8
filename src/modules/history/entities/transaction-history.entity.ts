@@ -1,15 +1,21 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  Index,
+} from "typeorm";
 
 export enum TransactionType {
-  MINT = 'MINT',
-  DEPOSIT = 'DEPOSIT',
-  WITHDRAW = 'WITHDRAW',
-  SWAP = 'SWAP',
+  MINT = "MINT",
+  DEPOSIT = "DEPOSIT",
+  WITHDRAW = "WITHDRAW",
+  SWAP = "SWAP",
 }
 
-@Entity('transaction_history')
+@Entity("transaction_history")
 export class TransactionHistory {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn("uuid")
   id: string;
 
   @Column({ unique: true })
@@ -24,7 +30,7 @@ export class TransactionHistory {
   poolId: string;
 
   @Column({
-    type: 'enum',
+    type: "enum",
     enum: TransactionType,
     default: TransactionType.SWAP,
   })
@@ -45,7 +51,7 @@ export class TransactionHistory {
   @Column({ nullable: true })
   tx: string; // The stellar transaction hash
 
-  @Column('timestamptz', { nullable: true })
+  @Column("timestamptz", { nullable: true })
   occurredAt: Date; // The real ledger close time from Horizon
 
   @Column({ nullable: true })

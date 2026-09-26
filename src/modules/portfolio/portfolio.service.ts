@@ -6,7 +6,7 @@ import { PnlCalculator } from "./pnl.calculator";
 import { PortfolioResponseDto } from "./dto/portfolio-response.dto";
 import { ScoutService } from "../scout/scout.service";
 import { HorizonClient } from "../scout/horizon/horizon.client";
-import { Logger, Inject, forwardRef } from "@nestjs/common";
+import { Logger } from "@nestjs/common";
 import { HistoryService } from "../history/history.service";
 import { OracleService } from "../oracle/oracle.service";
 import { OracleAsset } from "../oracle/oracle.types";
@@ -76,17 +76,26 @@ export class PortfolioService {
       const account = await this.horizonClient.fetchAccount(publicKey);
       if (!account || !account.balances) return;
 
-      const lpBalances = account.balances.filter(b => b.asset_type === 'liquidity_pool_shares' && b.liquidity_pool_id);
-      
-      const dbPositions = await this.positionRepository.find({ where: { userPublicKey: publicKey } });
+      const lpBalances = account.balances.filter(
+        (b) => b.asset_type === "liquidity_pool_shares" && b.liquidity_pool_id,
+      );
+
+      const dbPositions = await this.positionRepository.find({
+        where: { userPublicKey: publicKey },
+      });
 
       // Update existing positions
       for (const pos of dbPositions) {
-        const onChainMatch = lpBalances.find(b => b.liquidity_pool_id === pos.poolId);
+        const onChainMatch = lpBalances.find(
+          (b) => b.liquidity_pool_id === pos.poolId,
+        );
         const actualShares = onChainMatch ? onChainMatch.balance : "0";
-        
+
         // Always sync cost basis from exact history
-        const costBasis = await this.historyService.calculateUserCostBasis(publicKey, pos.poolId);
+        const costBasis = await this.historyService.calculateUserCostBasis(
+          publicKey,
+          pos.poolId,
+        );
 
         let changed = false;
         if (pos.sharesOwned !== actualShares) {
@@ -109,15 +118,24 @@ export class PortfolioService {
 
       // Create missing positions if they have balances and the pool exists in our scout db
       for (const onChain of lpBalances) {
-        const existsInDb = dbPositions.find(p => p.poolId === onChain.liquidity_pool_id);
+        const existsInDb = dbPositions.find(
+          (p) => p.poolId === onChain.liquidity_pool_id,
+        );
         if (!existsInDb) {
-          let poolExists = await this.scoutService.getPool(onChain.liquidity_pool_id!);
+          let poolExists = await this.scoutService.getPool(
+            onChain.liquidity_pool_id!,
+          );
           if (!poolExists) {
-            poolExists = await this.scoutService.forceFetchPool(onChain.liquidity_pool_id!);
+            poolExists = await this.scoutService.forceFetchPool(
+              onChain.liquidity_pool_id!,
+            );
           }
           if (poolExists) {
-            const costBasis = await this.historyService.calculateUserCostBasis(publicKey, onChain.liquidity_pool_id!);
-            
+            const costBasis = await this.historyService.calculateUserCostBasis(
+              publicKey,
+              onChain.liquidity_pool_id!,
+            );
+
             const newPos = this.positionRepository.create({
               userPublicKey: publicKey,
               poolId: onChain.liquidity_pool_id!,
@@ -132,7 +150,9 @@ export class PortfolioService {
         }
       }
     } catch (e) {
-      this.logger.warn(`Failed to sync blockchain balances for ${publicKey}: ${e.message}`);
+      this.logger.warn(
+        `Failed to sync blockchain balances for ${publicKey}: ${e.message}`,
+      );
     }
   }
 
@@ -162,13 +182,16 @@ export class PortfolioService {
     } else {
       // Eğer mevcutsa üzerine ekleniyor (basit logic, gerçekte average cost basis hesabı gerekir)
       position.sharesOwned = (
-        parseFloat(position.sharesOwned || "0") + parseFloat(sharesAmount || "0")
+        parseFloat(position.sharesOwned || "0") +
+        parseFloat(sharesAmount || "0")
       ).toString();
       position.assetADeposited = (
-        parseFloat(position.assetADeposited || "0") + parseFloat(assetAAmount || "0")
+        parseFloat(position.assetADeposited || "0") +
+        parseFloat(assetAAmount || "0")
       ).toString();
       position.assetBDeposited = (
-        parseFloat(position.assetBDeposited || "0") + parseFloat(assetBAmount || "0")
+        parseFloat(position.assetBDeposited || "0") +
+        parseFloat(assetBAmount || "0")
       ).toString();
       position.lastUpdatedAt = new Date();
     }
@@ -184,18 +207,26 @@ export class PortfolioService {
     // Gather all unique assets across pools to batch fetch prices
     const oracleAssetsMap = new Map<string, OracleAsset>();
     for (const pool of allPools.data || []) {
-      oracleAssetsMap.set(`${pool.assetACode}:${pool.assetAIssuer || 'native'}`, { code: pool.assetACode, issuer: pool.assetAIssuer });
-      oracleAssetsMap.set(`${pool.assetBCode}:${pool.assetBIssuer || 'native'}`, { code: pool.assetBCode, issuer: pool.assetBIssuer });
+      oracleAssetsMap.set(
+        `${pool.assetACode}:${pool.assetAIssuer || "native"}`,
+        { code: pool.assetACode, issuer: pool.assetAIssuer },
+      );
+      oracleAssetsMap.set(
+        `${pool.assetBCode}:${pool.assetBIssuer || "native"}`,
+        { code: pool.assetBCode, issuer: pool.assetBIssuer },
+      );
     }
-    const prices = await this.oracleService.getBatchUsdPrices(Array.from(oracleAssetsMap.values()));
+    const prices = await this.oracleService.getBatchUsdPrices(
+      Array.from(oracleAssetsMap.values()),
+    );
 
     for (const pool of allPools.data || []) {
       const reserveA = parseFloat(pool.reserveA) || 0;
       const reserveB = parseFloat(pool.reserveB) || 0;
-      
+
       const priceA = prices.get(pool.assetACode) || 0;
       const priceB = prices.get(pool.assetBCode) || 0;
-      
+
       if (priceA > 0 && priceB > 0) {
         marketSizeUsd += reserveA * priceA + reserveB * priceB;
       } else if (priceA > 0) {
@@ -274,13 +305,16 @@ export class PortfolioService {
     const snapshots = await this.scoutService.getPoolSnapshots(poolId, limit);
     if (!snapshots || snapshots.length === 0) return { chartData: [] };
 
-    const history = await this.historyService.getAllUserHistoryByPool(publicKey, poolId);
+    const history = await this.historyService.getAllUserHistoryByPool(
+      publicKey,
+      poolId,
+    );
 
     const chartData = [];
-    
+
     for (const snapshot of snapshots) {
       const snapshotTime = new Date(snapshot.snapshotAt).getTime();
-      
+
       let costBasisA = 0;
       let costBasisB = 0;
       let totalShares = 0;
@@ -289,38 +323,43 @@ export class PortfolioService {
         const txTime = new Date(tx.occurredAt).getTime();
         if (txTime > snapshotTime) break;
 
-        const shares = parseFloat(tx.sharesAmount || '0');
+        const shares = parseFloat(tx.sharesAmount || "0");
         // We only care about DEPOSIT and WITHDRAW for cost basis
-        if (tx.type === 'DEPOSIT' && shares > 0) {
-          costBasisA += parseFloat(tx.amountA || '0');
-          costBasisB += parseFloat(tx.amountB || '0');
+        if (tx.type === "DEPOSIT" && shares > 0) {
+          costBasisA += parseFloat(tx.amountA || "0");
+          costBasisB += parseFloat(tx.amountB || "0");
           totalShares += shares;
-        } else if (tx.type === 'WITHDRAW' && totalShares > 0) {
-          const remainingRatio = Math.max(0, (totalShares - shares) / totalShares);
+        } else if (tx.type === "WITHDRAW" && totalShares > 0) {
+          const remainingRatio = Math.max(
+            0,
+            (totalShares - shares) / totalShares,
+          );
           costBasisA *= remainingRatio;
           costBasisB *= remainingRatio;
           totalShares = Math.max(0, totalShares - shares);
         }
       }
 
-      const totalPoolShares = parseFloat(snapshot.totalShares || '0');
-      const shareRatio = totalPoolShares > 0 ? totalShares / totalPoolShares : 0;
+      const totalPoolShares = parseFloat(snapshot.totalShares || "0");
+      const shareRatio =
+        totalPoolShares > 0 ? totalShares / totalPoolShares : 0;
 
-      const priceA = parseFloat(snapshot.priceAUsd || '0');
-      const priceB = parseFloat(snapshot.priceBUsd || '0');
-      
-      const reserveA = parseFloat(snapshot.reserveA || '0');
-      const reserveB = parseFloat(snapshot.reserveB || '0');
+      const priceA = parseFloat(snapshot.priceAUsd || "0");
+      const priceB = parseFloat(snapshot.priceBUsd || "0");
 
-      const positionValueUsd = (reserveA * priceA + reserveB * priceB) * shareRatio;
-      const costBasisUsd = (costBasisA * priceA) + (costBasisB * priceB);
-      
+      const reserveA = parseFloat(snapshot.reserveA || "0");
+      const reserveB = parseFloat(snapshot.reserveB || "0");
+
+      const positionValueUsd =
+        (reserveA * priceA + reserveB * priceB) * shareRatio;
+      const costBasisUsd = costBasisA * priceA + costBasisB * priceB;
+
       const interestEarnedUsd = positionValueUsd - costBasisUsd;
 
       chartData.push({
-        date: snapshot.snapshotAt.toISOString().split('T')[0],
+        date: snapshot.snapshotAt.toISOString().split("T")[0],
         positionValueUsd,
-        interestEarnedUsd
+        interestEarnedUsd,
       });
     }
 

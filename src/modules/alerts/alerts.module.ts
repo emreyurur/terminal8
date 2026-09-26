@@ -8,7 +8,10 @@ import { AlertNotification } from "./entities/alert-notification.entity";
 import { PriceAlert } from "./entities/price-alert.entity";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PriceAlert, AlertNotification]), HistoryModule],
+  imports: [
+    TypeOrmModule.forFeature([PriceAlert, AlertNotification]),
+    HistoryModule,
+  ],
   controllers: [AlertsController],
   providers: [AlertsService, EmailService],
 })

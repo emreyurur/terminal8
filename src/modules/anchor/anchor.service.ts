@@ -39,7 +39,10 @@ export class AnchorService {
     }
     const url = `https://${this.config.anchorHomeDomain}/.well-known/stellar.toml`;
     try {
-      const res = await axios.get(url, { timeout: 10000, responseType: "text" });
+      const res = await axios.get(url, {
+        timeout: 10000,
+        responseType: "text",
+      });
       const value = toml.parse(res.data) as AnchorToml;
       this.tomlCache = {
         value,
@@ -47,7 +50,9 @@ export class AnchorService {
       };
       return value;
     } catch (e) {
-      throw new BadGatewayException(`Cannot read anchor stellar.toml: ${e.message}`);
+      throw new BadGatewayException(
+        `Cannot read anchor stellar.toml: ${e.message}`,
+      );
     }
   }
 
@@ -86,11 +91,19 @@ export class AnchorService {
 
   async getInfo() {
     const t = await this.getToml();
-    const usdc = t.CURRENCIES?.find((c) => c.code === this.config.anchorAssetCode);
-    const sep6 = await this.call("get", `${await this.endpoint("TRANSFER_SERVER")}/info`);
+    const usdc = t.CURRENCIES?.find(
+      (c) => c.code === this.config.anchorAssetCode,
+    );
+    const sep6 = await this.call(
+      "get",
+      `${await this.endpoint("TRANSFER_SERVER")}/info`,
+    );
     return {
       homeDomain: this.config.anchorHomeDomain,
-      asset: { code: this.config.anchorAssetCode, issuer: usdc?.issuer ?? null },
+      asset: {
+        code: this.config.anchorAssetCode,
+        issuer: usdc?.issuer ?? null,
+      },
       sep6,
     };
   }
@@ -113,15 +126,19 @@ export class AnchorService {
     query: { sellAsset: string; buyAsset: string; sellAmount: string },
     token?: string,
   ) {
-    return this.call("get", `${await this.endpoint("ANCHOR_QUOTE_SERVER")}/price`, {
-      token,
-      params: {
-        sell_asset: query.sellAsset,
-        buy_asset: query.buyAsset,
-        sell_amount: query.sellAmount,
-        context: "sep6",
+    return this.call(
+      "get",
+      `${await this.endpoint("ANCHOR_QUOTE_SERVER")}/price`,
+      {
+        token,
+        params: {
+          sell_asset: query.sellAsset,
+          buy_asset: query.buyAsset,
+          sell_amount: query.sellAmount,
+          context: "sep6",
+        },
       },
-    });
+    );
   }
 
   // SEP-6
@@ -130,16 +147,20 @@ export class AnchorService {
     dto: { amount?: string; quoteId?: string },
     token: string,
   ) {
-    return this.call("get", `${await this.endpoint("TRANSFER_SERVER")}/deposit`, {
-      token,
-      params: {
-        asset_code: this.config.anchorAssetCode,
-        account,
-        type: "bank_account",
-        amount: dto.amount,
-        quote_id: dto.quoteId,
+    return this.call(
+      "get",
+      `${await this.endpoint("TRANSFER_SERVER")}/deposit`,
+      {
+        token,
+        params: {
+          asset_code: this.config.anchorAssetCode,
+          account,
+          type: "bank_account",
+          amount: dto.amount,
+          quote_id: dto.quoteId,
+        },
       },
-    });
+    );
   }
 
   async withdraw(
@@ -147,24 +168,32 @@ export class AnchorService {
     dto: { dest: string; amount?: string; quoteId?: string },
     token: string,
   ) {
-    return this.call("get", `${await this.endpoint("TRANSFER_SERVER")}/withdraw`, {
-      token,
-      params: {
-        asset_code: this.config.anchorAssetCode,
-        account,
-        type: "bank_account",
-        dest: dto.dest,
-        amount: dto.amount,
-        quote_id: dto.quoteId,
+    return this.call(
+      "get",
+      `${await this.endpoint("TRANSFER_SERVER")}/withdraw`,
+      {
+        token,
+        params: {
+          asset_code: this.config.anchorAssetCode,
+          account,
+          type: "bank_account",
+          dest: dto.dest,
+          amount: dto.amount,
+          quote_id: dto.quoteId,
+        },
       },
-    });
+    );
   }
 
   async getTransaction(id: string, token: string) {
-    return this.call("get", `${await this.endpoint("TRANSFER_SERVER")}/transaction`, {
-      token,
-      params: { id },
-    });
+    return this.call(
+      "get",
+      `${await this.endpoint("TRANSFER_SERVER")}/transaction`,
+      {
+        token,
+        params: { id },
+      },
+    );
   }
 
   /**
@@ -179,11 +208,15 @@ export class AnchorService {
     try {
       const res = await axios.post(
         `${base}/tx/${id}/simulate-bank-transfer`,
-        new URLSearchParams({ ...(amount ? { amount } : {}), _: "1" }).toString(),
+        new URLSearchParams({
+          ...(amount ? { amount } : {}),
+          _: "1",
+        }).toString(),
         {
           timeout: 20000,
           maxRedirects: 0,
-          validateStatus: (status) => status < 400 || status === 302 || status === 303,
+          validateStatus: (status) =>
+            status < 400 || status === 302 || status === 303,
         },
       );
       return { ok: true, status: res.status };
@@ -191,7 +224,9 @@ export class AnchorService {
       const status = e.response?.status;
       const detail = e.response?.data?.error || e.message;
       if (status && status >= 400 && status < 500) {
-        throw new BadRequestException(`Anchor rejected the simulation: ${detail}`);
+        throw new BadRequestException(
+          `Anchor rejected the simulation: ${detail}`,
+        );
       }
       throw new BadGatewayException(`Anchor error: ${detail}`);
     }
@@ -200,13 +235,20 @@ export class AnchorService {
   /** Builds the unsigned USDC payment (with memo) the user signs to complete an off-ramp. */
   async buildWithdrawPaymentXdr(
     publicKey: string,
-    dto: { amount: string; anchorAccount: string; memo: string; memoType?: string },
+    dto: {
+      amount: string;
+      anchorAccount: string;
+      memo: string;
+      memoType?: string;
+    },
   ): Promise<{ xdr: string; networkPassphrase: string }> {
     const issuer = (await this.getToml()).CURRENCIES?.find(
       (c) => c.code === this.config.anchorAssetCode,
     )?.issuer;
     if (!issuer) {
-      throw new BadGatewayException("Anchor stellar.toml has no issuer for the asset");
+      throw new BadGatewayException(
+        "Anchor stellar.toml has no issuer for the asset",
+      );
     }
 
     const horizon = new Horizon.Server(this.config.horizonUrl);
@@ -214,7 +256,9 @@ export class AnchorService {
     try {
       account = await horizon.loadAccount(publicKey);
     } catch {
-      throw new BadRequestException("Source account does not exist on the network");
+      throw new BadRequestException(
+        "Source account does not exist on the network",
+      );
     }
 
     const memoType = dto.memoType ?? "text";
@@ -240,6 +284,9 @@ export class AnchorService {
       .setTimeout(300)
       .build();
 
-    return { xdr: tx.toXDR(), networkPassphrase: this.config.networkPassphrase };
+    return {
+      xdr: tx.toXDR(),
+      networkPassphrase: this.config.networkPassphrase,
+    };
   }
 }

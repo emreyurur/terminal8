@@ -10,7 +10,7 @@ export function resolveSacAddress(
   networkPassphrase: string,
 ): string {
   const asset = issuer ? new Asset(code, issuer) : Asset.native();
-  
+
   // SAC contract ID = SHA256(networkIdHash + "contract_from_asset" preimage + asset XDR)
   // Stellar SDK'nın asset.contractId(networkPassphrase) metodu bunu yapar:
   return asset.contractId(networkPassphrase);
@@ -18,7 +18,11 @@ export function resolveSacAddress(
 
 // Reflector'a parametre olarak geçilecek format: SEP-40 Asset enum'u.
 // Enum: Asset::Stellar(Address) veya Asset::Other(Symbol)
-export function toReflectorParam(sacAddress: string, assetCode: string, isMainnet: boolean): xdr.ScVal {
+export function toReflectorParam(
+  sacAddress: string,
+  assetCode: string,
+  isMainnet: boolean,
+): xdr.ScVal {
   if (!isMainnet) {
     const otherSym = xdr.ScVal.scvSymbol("Other");
     const assetName = xdr.ScVal.scvSymbol(assetCode);
@@ -26,7 +30,7 @@ export function toReflectorParam(sacAddress: string, assetCode: string, isMainne
   }
   const stellarSym = xdr.ScVal.scvSymbol("Stellar");
   const addressVal = xdr.ScVal.scvAddress(
-    Address.fromString(sacAddress).toScAddress()
+    Address.fromString(sacAddress).toScAddress(),
   );
   return xdr.ScVal.scvVec([stellarSym, addressVal]);
 }

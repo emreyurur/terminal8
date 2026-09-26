@@ -57,9 +57,15 @@ export class RiskService {
       // Snapshot yoksa veya tvlUsd hesaplanmamışsa reserve'lerden ve oracle'dan tahmin et
       const reserveA = parseFloat(pool.reserveA) || 0;
       const reserveB = parseFloat(pool.reserveB) || 0;
-      
-      const priceA = await this.oracleService.getUsdPrice(pool.assetACode, pool.assetAIssuer);
-      const priceB = await this.oracleService.getUsdPrice(pool.assetBCode, pool.assetBIssuer);
+
+      const priceA = await this.oracleService.getUsdPrice(
+        pool.assetACode,
+        pool.assetAIssuer,
+      );
+      const priceB = await this.oracleService.getUsdPrice(
+        pool.assetBCode,
+        pool.assetBIssuer,
+      );
 
       if (priceA && priceB) {
         tvlUsd = reserveA * priceA + reserveB * priceB;

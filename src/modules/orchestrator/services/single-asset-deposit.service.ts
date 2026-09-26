@@ -42,10 +42,20 @@ type PoolSide = { asset: Asset; code: string; key: string; reserve: number };
 
 const toSide = (r: { asset: string; amount: string }): PoolSide => {
   if (r.asset === "native") {
-    return { asset: Asset.native(), code: "XLM", key: "native", reserve: Number(r.amount) };
+    return {
+      asset: Asset.native(),
+      code: "XLM",
+      key: "native",
+      reserve: Number(r.amount),
+    };
   }
   const [code, issuer] = r.asset.split(":");
-  return { asset: new Asset(code, issuer), code, key: r.asset, reserve: Number(r.amount) };
+  return {
+    asset: new Asset(code, issuer),
+    code,
+    key: r.asset,
+    reserve: Number(r.amount),
+  };
 };
 
 @Injectable()
@@ -85,16 +95,21 @@ export class SingleAssetDepositService {
       throw new BadRequestException("Pool not found");
     }
     if (pool.type !== "constant_product" || pool.reserves.length !== 2) {
-      throw new BadRequestException("Only constant product pools are supported");
+      throw new BadRequestException(
+        "Only constant product pools are supported",
+      );
     }
 
     const [sideA, sideB] = pool.reserves.map(toSide);
     const wanted = dto.sourceAsset.toUpperCase();
     const matches = (s: PoolSide) =>
-      s.key.toUpperCase() === wanted || (!wanted.includes(":") && s.code.toUpperCase() === wanted);
+      s.key.toUpperCase() === wanted ||
+      (!wanted.includes(":") && s.code.toUpperCase() === wanted);
     const sourceIsA = matches(sideA);
     if (!sourceIsA && !matches(sideB)) {
-      throw new BadRequestException(`${dto.sourceAsset} is not an asset of this pool`);
+      throw new BadRequestException(
+        `${dto.sourceAsset} is not an asset of this pool`,
+      );
     }
     const source = sourceIsA ? sideA : sideB;
     const dest = sourceIsA ? sideB : sideA;
@@ -116,13 +131,17 @@ export class SingleAssetDepositService {
     try {
       account = await horizon.loadAccount(publicKey);
     } catch {
-      throw new BadRequestException("Source account does not exist on the network");
+      throw new BadRequestException(
+        "Source account does not exist on the network",
+      );
     }
 
     const hasDestTrustline =
       dest.asset.isNative() ||
       account.balances.some(
-        (b: any) => b.asset_code === dest.code && b.asset_issuer === dest.asset.getIssuer(),
+        (b: any) =>
+          b.asset_code === dest.code &&
+          b.asset_issuer === dest.asset.getIssuer(),
       );
     const hasLpTrustline = account.balances.some(
       (b: any) => b.liquidity_pool_id === dto.poolId,
@@ -132,16 +151,25 @@ export class SingleAssetDepositService {
       // dest trustline = 1 subentry, LP share trustline = 2 subentries
       newSubentries: (hasDestTrustline ? 0 : 1) + (hasLpTrustline ? 0 : 2),
     });
-    await this.assertDirectRoute(horizon, source, dest, plan.receiveAmount, plan.swapAmount);
+    await this.assertDirectRoute(
+      horizon,
+      source,
+      dest,
+      plan.receiveAmount,
+      plan.swapAmount,
+    );
 
     // Pool price after our own swap, as A per B, with room for small moves before the tx lands.
     const priceAB = sourceIsA ? plan.priceAfter : 1 / plan.priceAfter;
     const tol = Math.max(slippageBps / 10000, 0.005) * 2;
 
-    const builder = new TransactionBuilder(new Account(publicKey, account.sequence), {
-      fee: FEE_PER_OP,
-      networkPassphrase: this.config.networkPassphrase,
-    });
+    const builder = new TransactionBuilder(
+      new Account(publicKey, account.sequence),
+      {
+        fee: FEE_PER_OP,
+        networkPassphrase: this.config.networkPassphrase,
+      },
+    );
     const addsTrustlines: string[] = [];
 
     if (!hasDestTrustline) {
@@ -208,7 +236,8 @@ export class SingleAssetDepositService {
     const line: any = account.balances.find((b: any) =>
       source.asset.isNative()
         ? b.asset_type === "native"
-        : b.asset_code === source.code && b.asset_issuer === source.asset.getIssuer(),
+        : b.asset_code === source.code &&
+          b.asset_issuer === source.asset.getIssuer(),
     );
     const balance = Number(line?.balance ?? 0);
     const selling = Number(line?.selling_liabilities ?? 0);
@@ -219,7 +248,8 @@ export class SingleAssetDepositService {
       const sponsoring = Number((account as any).num_sponsoring ?? 0);
       const sponsored = Number((account as any).num_sponsored ?? 0);
       const reserve =
-        (2 + subentries + opts.newSubentries + sponsoring - sponsored) * BASE_RESERVE;
+        (2 + subentries + opts.newSubentries + sponsoring - sponsored) *
+        BASE_RESERVE;
       // fees for at most 4 operations
       available -= reserve + 0.01;
     }

@@ -97,9 +97,13 @@ describe("AnchorService", () => {
 
   it("simulates the sandbox bank transfer with a form post and rejects unsafe ids", async () => {
     mockToml();
-    const post = jest.spyOn(axios, "post").mockResolvedValueOnce({ status: 303 } as any);
+    const post = jest
+      .spyOn(axios, "post")
+      .mockResolvedValueOnce({ status: 303 } as any);
 
-    await expect(service.simulateBankTransfer("sep_abc123", "100")).resolves.toEqual({
+    await expect(
+      service.simulateBankTransfer("sep_abc123", "100"),
+    ).resolves.toEqual({
       ok: true,
       status: 303,
     });
@@ -109,9 +113,9 @@ describe("AnchorService", () => {
       expect.any(Object),
     );
 
-    await expect(service.simulateBankTransfer("../evil")).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.simulateBankTransfer("../evil"),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("fails clearly when stellar.toml lacks an endpoint", async () => {

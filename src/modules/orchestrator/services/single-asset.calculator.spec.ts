@@ -40,7 +40,9 @@ describe("single asset calculator", () => {
     });
 
     it("keeps the deposit cap above what the deposit actually needs", () => {
-      expect(plan.maxDepositIn).toBeGreaterThanOrEqual(plan.expectedDepositIn - 1e-6);
+      expect(plan.maxDepositIn).toBeGreaterThanOrEqual(
+        plan.expectedDepositIn - 1e-6,
+      );
     });
 
     it("only leaves roughly the slippage margin of the input asset unused", () => {
@@ -49,7 +51,10 @@ describe("single asset calculator", () => {
     });
 
     it("receives an exact 7-decimal amount", () => {
-      expect(Math.round(plan.receiveAmount * 1e7)).toBeCloseTo(plan.receiveAmount * 1e7, 5);
+      expect(Math.round(plan.receiveAmount * 1e7)).toBeCloseTo(
+        plan.receiveAmount * 1e7,
+        5,
+      );
     });
 
     it("reports a positive price impact for a swap that moves the pool", () => {
@@ -66,15 +71,29 @@ describe("single asset calculator", () => {
       slippageBps: 50,
     });
     expect(plan.receiveAmount).toBeGreaterThan(0);
-    expect(plan.sendMax + plan.maxDepositIn).toBeLessThanOrEqual(1_000_000 + 1e-7);
+    expect(plan.sendMax + plan.maxDepositIn).toBeLessThanOrEqual(
+      1_000_000 + 1e-7,
+    );
   });
 
   it("rejects amounts that cannot work", () => {
     expect(() =>
-      planSingleAssetDeposit({ amount: 0, reserveIn: 10, reserveOut: 10, feeBp: 30, slippageBps: 50 }),
+      planSingleAssetDeposit({
+        amount: 0,
+        reserveIn: 10,
+        reserveOut: 10,
+        feeBp: 30,
+        slippageBps: 50,
+      }),
     ).toThrow();
     expect(() =>
-      planSingleAssetDeposit({ amount: 1e-9, reserveIn: 1e6, reserveOut: 1e6, feeBp: 30, slippageBps: 50 }),
+      planSingleAssetDeposit({
+        amount: 1e-9,
+        reserveIn: 1e6,
+        reserveOut: 1e6,
+        feeBp: 30,
+        slippageBps: 50,
+      }),
     ).toThrow();
   });
 });

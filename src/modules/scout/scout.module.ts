@@ -27,7 +27,7 @@ export class ScoutModule implements OnModuleInit {
   constructor(
     @InjectQueue("scout") private readonly scoutQueue: Queue,
     @Inject(appConfig.KEY) private config: ConfigType<typeof appConfig>,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     // BullMQ Repeatable Jobs

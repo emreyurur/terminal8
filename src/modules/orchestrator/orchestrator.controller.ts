@@ -39,7 +39,8 @@ export class OrchestratorController {
 
   @Post("single-asset-deposit")
   @ApiOperation({
-    summary: "Build one XDR that swaps part of a single asset and deposits into the pool",
+    summary:
+      "Build one XDR that swaps part of a single asset and deposits into the pool",
     description:
       "For users holding only one pool asset. Returns the unsigned XDR (trustlines if needed, strict-receive swap, LP deposit) and a plan describing the swap. All operations are atomic.",
   })

@@ -10,6 +10,7 @@ import { HorizonPoolResponse } from "./horizon/horizon.types";
 import { RedisService } from "../../core/redis/redis.service";
 import { OracleService } from "../oracle/oracle.service";
 import { CACHE_KEYS } from "../../shared/constants";
+import axios from "axios";
 
 @Injectable()
 export class ScoutService {
@@ -24,15 +25,15 @@ export class ScoutService {
     private readonly redisService: RedisService,
     private readonly oracleService: OracleService,
     @Inject(appConfig.KEY) private config: ConfigType<typeof appConfig>,
-  ) { }
+  ) {}
 
   async syncLiquidityPools() {
     this.logger.log("Starting liquidity pools sync...");
     const allPools = await this.horizonClient.fetchAllPools();
-    
+
     // Filter out fake USDC pools (Testnet protection)
     const officialUsdcIssuer = this.config.network.usdc.issuer;
-    const pools = allPools.filter(p => {
+    const pools = allPools.filter((p) => {
       for (const r of p.reserves) {
         if (r.asset !== "native" && r.asset.startsWith("USDC:")) {
           const [, issuer] = r.asset.split(":");
@@ -42,7 +43,9 @@ export class ScoutService {
       return true;
     });
 
-    this.logger.log(`Fetched ${allPools.length} pools from Horizon, ${pools.length} valid pools after filtering`);
+    this.logger.log(
+      `Fetched ${allPools.length} pools from Horizon, ${pools.length} valid pools after filtering`,
+    );
 
     // Calculate approximate TVL to find the truly valuable pools
     const getApproxTvl = (p: any) => {
@@ -66,7 +69,7 @@ export class ScoutService {
 
       // User requested XLM/USDC to be always #1
       if (hasNative && hasUsdc) {
-        tvl += 1000000000; 
+        tvl += 1000000000;
       }
       return tvl;
     };
@@ -92,8 +95,10 @@ export class ScoutService {
         .where("id NOT IN (:...ids)", { ids: Array.from(activePoolIds) })
         .execute();
     }
-    
-    this.logger.log(`Liquidity pools sync completed. Tracking ${activePoolIds.size} selected pools.`);
+
+    this.logger.log(
+      `Liquidity pools sync completed. Tracking ${activePoolIds.size} selected pools.`,
+    );
   }
 
   private async upsertPool(data: HorizonPoolResponse) {
@@ -153,29 +158,34 @@ export class ScoutService {
         let volumeB = 0;
 
         try {
-          const axios = require("axios");
           const isTestnet = this.config.networkPassphrase.includes("Test");
-      const networkType = isTestnet ? "testnet" : "public";
-      const res = await axios.get(`https://api.stellar.expert/explorer/${networkType}/liquidity-pool/${pool.id}`);
-          
+          const networkType = isTestnet ? "testnet" : "public";
+          const res = await axios.get(
+            `https://api.stellar.expert/explorer/${networkType}/liquidity-pool/${pool.id}`,
+          );
+
           if (res.data && res.data.volume && res.data.volume.length === 2) {
             volumeA = (res.data.volume[0]["1d"] || 0) / 10000000;
             volumeB = (res.data.volume[1]["1d"] || 0) / 10000000;
           }
         } catch (apiErr) {
-          this.logger.warn(`Failed to fetch 24h volume from Stellar Expert for pool ${pool.id}: ${apiErr.message}`);
+          this.logger.warn(
+            `Failed to fetch 24h volume from Stellar Expert for pool ${pool.id}: ${apiErr.message}`,
+          );
           // volumeA ve volumeB 0 kalır.
         }
 
         // OracleService kullanarak gerçek USD fiyatlarını çekiyoruz
-        const priceAUsd = (await this.oracleService.getUsdPrice(
-          pool.assetACode,
-          pool.assetAIssuer,
-        )) || 0;
-        const priceBUsd = (await this.oracleService.getUsdPrice(
-          pool.assetBCode,
-          pool.assetBIssuer,
-        )) || 0;
+        const priceAUsd =
+          (await this.oracleService.getUsdPrice(
+            pool.assetACode,
+            pool.assetAIssuer,
+          )) || 0;
+        const priceBUsd =
+          (await this.oracleService.getUsdPrice(
+            pool.assetBCode,
+            pool.assetBIssuer,
+          )) || 0;
 
         const tvlUsd =
           parseFloat(pool.reserveA) * priceAUsd +
@@ -216,10 +226,10 @@ export class ScoutService {
       .where("pool.isActive = :isActive", { isActive: true })
       .addSelect(
         `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
-        'isUsdcXlm'
+        "isUsdcXlm",
       )
-      .orderBy('"isUsdcXlm"', 'DESC')
-      .addOrderBy('pool.totalTrustlines', 'DESC')
+      .orderBy('"isUsdcXlm"', "DESC")
+      .addOrderBy("pool.totalTrustlines", "DESC")
       .skip(skip)
       .take(limit)
       .getManyAndCount();
@@ -233,7 +243,11 @@ export class ScoutService {
     };
   }
 
-  async getRecommendedPools(pubkey: string, page: number = 1, limit: number = 50) {
+  async getRecommendedPools(
+    pubkey: string,
+    page: number = 1,
+    limit: number = 50,
+  ) {
     const skip = (page - 1) * limit;
 
     // 1. Fetch user's account from Horizon to get their balances
@@ -246,41 +260,43 @@ export class ScoutService {
 
     // 2. Extract string identifiers for user's assets in format "CODE:ISSUER" or "XLM:null"
     const userAssets = account.balances
-      .filter(b => b.asset_type !== 'liquidity_pool_shares')
-      .map(b => {
-        if (b.asset_type === 'native') return 'XLM:null';
+      .filter((b) => b.asset_type !== "liquidity_pool_shares")
+      .map((b) => {
+        if (b.asset_type === "native") return "XLM:null";
         return `${b.asset_code}:${b.asset_issuer}`;
       });
 
-    const queryBuilder = this.poolRepository.createQueryBuilder("pool")
+    const queryBuilder = this.poolRepository
+      .createQueryBuilder("pool")
       .where("pool.isActive = :isActive", { isActive: true });
 
     // 3. Compute match score if user has assets
     if (userAssets.length > 0) {
-      queryBuilder.addSelect(
-        `(
+      queryBuilder
+        .addSelect(
+          `(
           CASE WHEN CONCAT("pool"."assetACode", ':', COALESCE("pool"."assetAIssuer", 'null')) IN (:...userAssets) THEN 1 ELSE 0 END
           +
           CASE WHEN CONCAT("pool"."assetBCode", ':', COALESCE("pool"."assetBIssuer", 'null')) IN (:...userAssets) THEN 1 ELSE 0 END
         )`,
-        'matchScore'
-      )
-      .addSelect(
-        `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
-        'isUsdcXlm'
-      )
-        .setParameter('userAssets', userAssets)
-        .orderBy('"isUsdcXlm"', 'DESC')
-        .addOrderBy('"matchScore"', 'DESC')
-        .addOrderBy('pool.totalTrustlines', 'DESC');
+          "matchScore",
+        )
+        .addSelect(
+          `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
+          "isUsdcXlm",
+        )
+        .setParameter("userAssets", userAssets)
+        .orderBy('"isUsdcXlm"', "DESC")
+        .addOrderBy('"matchScore"', "DESC")
+        .addOrderBy("pool.totalTrustlines", "DESC");
     } else {
       queryBuilder
         .addSelect(
           `CASE WHEN ("pool"."assetACode" = 'USDC' AND "pool"."assetBCode" = 'XLM') OR ("pool"."assetACode" = 'XLM' AND "pool"."assetBCode" = 'USDC') THEN 1 ELSE 0 END`,
-          'isUsdcXlm'
+          "isUsdcXlm",
         )
-        .orderBy('"isUsdcXlm"', 'DESC')
-        .addOrderBy('pool.totalTrustlines', 'DESC');
+        .orderBy('"isUsdcXlm"', "DESC")
+        .addOrderBy("pool.totalTrustlines", "DESC");
     }
 
     // 4. Paginate
@@ -303,20 +319,21 @@ export class ScoutService {
   }
 
   async getPoolSnapshots(poolId: string, limit?: number) {
-    const query = this.snapshotRepository.createQueryBuilder("snapshot")
+    const query = this.snapshotRepository
+      .createQueryBuilder("snapshot")
       .where("snapshot.poolId = :poolId", { poolId })
       .orderBy("snapshot.snapshotAt", "ASC");
 
     if (limit) {
       query.take(limit); // we probably want the latest `limit` snapshots, but ordered ASC.
     }
-    
+
     // Better logic for latest X records ordered ASC:
     if (limit) {
       const records = await this.snapshotRepository.find({
         where: { poolId },
         order: { snapshotAt: "DESC" },
-        take: limit
+        take: limit,
       });
       return records.reverse();
     }
@@ -357,19 +374,30 @@ export class ScoutService {
 
     // --- 1. Calculate Real-Time Dashboard Metrics ---
     // Fetch live USD prices
-    const priceAUsd = (await this.oracleService.getUsdPrice(pool.assetACode, pool.assetAIssuer)) || 0;
-    const priceBUsd = (await this.oracleService.getUsdPrice(pool.assetBCode, pool.assetBIssuer)) || 0;
-    
+    const priceAUsd =
+      (await this.oracleService.getUsdPrice(
+        pool.assetACode,
+        pool.assetAIssuer,
+      )) || 0;
+    const priceBUsd =
+      (await this.oracleService.getUsdPrice(
+        pool.assetBCode,
+        pool.assetBIssuer,
+      )) || 0;
+
     // Live TVL
-    totalSupplied = parseFloat(pool.reserveA) * priceAUsd + parseFloat(pool.reserveB) * priceBUsd;
+    totalSupplied =
+      parseFloat(pool.reserveA) * priceAUsd +
+      parseFloat(pool.reserveB) * priceBUsd;
 
     // Live 24h Volume from Stellar Expert
     let vol24h = 0;
     try {
-      const axios = require("axios");
       const isTestnet = this.config.networkPassphrase.includes("Test");
       const networkType = isTestnet ? "testnet" : "public";
-      const res = await axios.get(`https://api.stellar.expert/explorer/${networkType}/liquidity-pool/${pool.id}`);
+      const res = await axios.get(
+        `https://api.stellar.expert/explorer/${networkType}/liquidity-pool/${pool.id}`,
+      );
       if (res.data && res.data.volume && res.data.volume.length === 2) {
         const volumeA = (res.data.volume[0]["1d"] || 0) / 10000000;
         const volumeB = (res.data.volume[1]["1d"] || 0) / 10000000;
@@ -378,12 +406,17 @@ export class ScoutService {
     } catch (e) {
       // Fallback to latest snapshot if Expert API fails
       if (snapshots.length > 0) {
-        vol24h = parseFloat(snapshots[snapshots.length - 1].volume24hUsd || "0");
+        vol24h = parseFloat(
+          snapshots[snapshots.length - 1].volume24hUsd || "0",
+        );
       }
     }
 
     utilization = totalSupplied > 0 ? (vol24h / totalSupplied) * 100 : 0;
-    supplyApy = totalSupplied > 0 ? ((vol24h * (pool.feeBp / 10000) * 365) / totalSupplied) * 100 : 0;
+    supplyApy =
+      totalSupplied > 0
+        ? ((vol24h * (pool.feeBp / 10000) * 365) / totalSupplied) * 100
+        : 0;
 
     // --- 2. Calculate Historical Chart Data ---
     if (snapshots.length > 0) {

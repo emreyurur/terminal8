@@ -7,7 +7,13 @@ import {
   positionValue,
 } from "./alert-metrics";
 
-const pool: PoolSnapshot = { reserveA: 1000, reserveB: 4000, totalShares: 2000, codeA: "XLM", codeB: "TKN" };
+const pool: PoolSnapshot = {
+  reserveA: 1000,
+  reserveB: 4000,
+  totalShares: 2000,
+  codeA: "XLM",
+  codeB: "TKN",
+};
 
 describe("alert metrics", () => {
   it("prices the pool in either asset from its own reserves", () => {
@@ -31,7 +37,13 @@ describe("alert metrics", () => {
 
     it("matches the textbook value for a 4x price move (~20%)", () => {
       // entry: 100 XLM + 100 TKN (price 1). Now the pool holds the same share at price 4 (A per B).
-      const moved: PoolSnapshot = { reserveA: 2000, reserveB: 500, totalShares: 1000, codeA: "XLM", codeB: "TKN" };
+      const moved: PoolSnapshot = {
+        reserveA: 2000,
+        reserveB: 500,
+        totalShares: 1000,
+        codeA: "XLM",
+        codeB: "TKN",
+      };
       // wallet owns 10% => 200 XLM + 50 TKN. Held: 100 XLM + 100 TKN = 100 + 100*4 = 500 XLM. LP: 400 XLM.
       expect(impermanentLossPct(moved, 100, 100, 100)).toBeCloseTo(20, 6);
     });
@@ -54,10 +66,22 @@ describe("alert metrics", () => {
   });
 
   it("describes an alert in plain words", () => {
-    const base = { threshold: 0.3, quoteSide: "A" as const, codeA: "XLM", codeB: "TKN" };
-    expect(describeAlert({ ...base, metric: "PRICE", condition: "BELOW" })).toBe("1 TKN price fell below 0.3000 XLM");
-    expect(describeAlert({ ...base, metric: "IMPERMANENT_LOSS_PCT", condition: "ABOVE", threshold: 5 })).toBe(
-      "Impermanent loss on XLM/TKN rose above 5%",
-    );
+    const base = {
+      threshold: 0.3,
+      quoteSide: "A" as const,
+      codeA: "XLM",
+      codeB: "TKN",
+    };
+    expect(
+      describeAlert({ ...base, metric: "PRICE", condition: "BELOW" }),
+    ).toBe("1 TKN price fell below 0.3000 XLM");
+    expect(
+      describeAlert({
+        ...base,
+        metric: "IMPERMANENT_LOSS_PCT",
+        condition: "ABOVE",
+        threshold: 5,
+      }),
+    ).toBe("Impermanent loss on XLM/TKN rose above 5%");
   });
 });

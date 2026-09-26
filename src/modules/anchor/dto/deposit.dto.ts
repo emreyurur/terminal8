@@ -40,11 +40,15 @@ export class BuildWithdrawPaymentDto {
   @IsNumberString()
   amount: string;
 
-  @ApiProperty({ description: "Anchor treasury account (withdraw_anchor_account)" })
+  @ApiProperty({
+    description: "Anchor treasury account (withdraw_anchor_account)",
+  })
   @IsString()
   anchorAccount: string;
 
-  @ApiProperty({ description: "Memo returned by the anchor's withdraw response" })
+  @ApiProperty({
+    description: "Memo returned by the anchor's withdraw response",
+  })
   @IsString()
   memo: string;
 
@@ -55,7 +59,9 @@ export class BuildWithdrawPaymentDto {
 }
 
 export class SimulateTransferDto {
-  @ApiPropertyOptional({ description: "TRY amount that 'arrives' (defaults to the deposit amount)" })
+  @ApiPropertyOptional({
+    description: "TRY amount that 'arrives' (defaults to the deposit amount)",
+  })
   @IsNumberString()
   @IsOptional()
   amount?: string;

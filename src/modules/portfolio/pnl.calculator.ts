@@ -22,14 +22,22 @@ export class PnlCalculator {
     const currentB = parseFloat(pool.reserveB) * shareRatio;
 
     // Current USD prices of A and B from Oracle (or internal pool ratio if oracle fails)
-    let priceAUsd = await this.oracleService.getUsdPrice(pool.assetACode, pool.assetAIssuer);
-    let priceBUsd = await this.oracleService.getUsdPrice(pool.assetBCode, pool.assetBIssuer);
+    let priceAUsd = await this.oracleService.getUsdPrice(
+      pool.assetACode,
+      pool.assetAIssuer,
+    );
+    let priceBUsd = await this.oracleService.getUsdPrice(
+      pool.assetBCode,
+      pool.assetBIssuer,
+    );
 
     if (!priceAUsd && priceBUsd) {
       // internal price ratio
-      priceAUsd = (parseFloat(pool.reserveB) * priceBUsd) / parseFloat(pool.reserveA);
+      priceAUsd =
+        (parseFloat(pool.reserveB) * priceBUsd) / parseFloat(pool.reserveA);
     } else if (!priceBUsd && priceAUsd) {
-      priceBUsd = (parseFloat(pool.reserveA) * priceAUsd) / parseFloat(pool.reserveB);
+      priceBUsd =
+        (parseFloat(pool.reserveA) * priceAUsd) / parseFloat(pool.reserveB);
     } else if (!priceAUsd && !priceBUsd) {
       priceAUsd = 0;
       priceBUsd = 0;

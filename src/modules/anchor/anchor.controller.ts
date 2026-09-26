@@ -42,7 +42,9 @@ export class AnchorController {
   constructor(private readonly anchorService: AnchorService) {}
 
   @Get("info")
-  @ApiOperation({ summary: "Anchor discovery (SEP-1) + supported assets (SEP-6 /info)" })
+  @ApiOperation({
+    summary: "Anchor discovery (SEP-1) + supported assets (SEP-6 /info)",
+  })
   info() {
     return this.anchorService.getInfo();
   }
@@ -54,7 +56,9 @@ export class AnchorController {
   }
 
   @Post("auth/token")
-  @ApiOperation({ summary: "Exchange a signed anchor challenge for an anchor token" })
+  @ApiOperation({
+    summary: "Exchange a signed anchor challenge for an anchor token",
+  })
   token(@Body() dto: VerifyAnchorChallengeDto) {
     return this.anchorService.verifyChallenge(dto.transaction);
   }
@@ -68,14 +72,19 @@ export class AnchorController {
     @Query("sellAmount") sellAmount: string,
     @Headers("x-anchor-token") token?: string,
   ) {
-    return this.anchorService.getPrice({ sellAsset, buyAsset, sellAmount }, token);
+    return this.anchorService.getPrice(
+      { sellAsset, buyAsset, sellAmount },
+      token,
+    );
   }
 
   @Post("deposit")
   @ApiBearerAuth()
   @anchorTokenHeader
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "On-ramp: start a TRY -> USDC deposit (returns IBAN + reference)" })
+  @ApiOperation({
+    summary: "On-ramp: start a TRY -> USDC deposit (returns IBAN + reference)",
+  })
   deposit(
     @CurrentUserPublicKey() publicKey: string,
     @Body() dto: DepositDto,
@@ -87,7 +96,10 @@ export class AnchorController {
   @Post("deposit/:id/simulate-transfer")
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Sandbox only: simulate the incoming TRY bank transfer for a deposit" })
+  @ApiOperation({
+    summary:
+      "Sandbox only: simulate the incoming TRY bank transfer for a deposit",
+  })
   simulateTransfer(@Param("id") id: string, @Body() dto: SimulateTransferDto) {
     return this.anchorService.simulateBankTransfer(id, dto.amount);
   }
@@ -96,7 +108,10 @@ export class AnchorController {
   @ApiBearerAuth()
   @anchorTokenHeader
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Off-ramp: start a USDC -> TRY withdrawal (returns treasury + memo)" })
+  @ApiOperation({
+    summary:
+      "Off-ramp: start a USDC -> TRY withdrawal (returns treasury + memo)",
+  })
   withdraw(
     @CurrentUserPublicKey() publicKey: string,
     @Body() dto: WithdrawDto,
@@ -108,7 +123,10 @@ export class AnchorController {
   @Post("withdraw/build-payment")
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Build the unsigned USDC payment XDR (with memo) for the wallet to sign" })
+  @ApiOperation({
+    summary:
+      "Build the unsigned USDC payment XDR (with memo) for the wallet to sign",
+  })
   buildPayment(
     @CurrentUserPublicKey() publicKey: string,
     @Body() dto: BuildWithdrawPaymentDto,
@@ -121,7 +139,10 @@ export class AnchorController {
   @anchorTokenHeader
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: "Track a ramp transaction (SEP-6 /transaction)" })
-  transaction(@Param("id") id: string, @Headers("x-anchor-token") token?: string) {
+  transaction(
+    @Param("id") id: string,
+    @Headers("x-anchor-token") token?: string,
+  ) {
     return this.anchorService.getTransaction(id, requireToken(token));
   }
 }

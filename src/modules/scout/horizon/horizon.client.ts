@@ -35,8 +35,15 @@ export class HorizonClient {
       },
       async (error) => {
         const status = error.response?.status;
-        if (status === 429 || status === 500 || status === 503 || status === 504) {
-          this.logger.debug(`Horizon API overloaded (status ${status}). Retrying after 3s delay...`);
+        if (
+          status === 429 ||
+          status === 500 ||
+          status === 503 ||
+          status === 504
+        ) {
+          this.logger.debug(
+            `Horizon API overloaded (status ${status}). Retrying after 3s delay...`,
+          );
           await new Promise((resolve) => setTimeout(resolve, 3000));
           return this.axios(error.config);
         }
@@ -68,7 +75,9 @@ export class HorizonClient {
 
   async fetchPool(poolId: string): Promise<HorizonPoolResponse | null> {
     try {
-      const response = await this.axios.get<HorizonPoolResponse>(`/liquidity_pools/${poolId}`);
+      const response = await this.axios.get<HorizonPoolResponse>(
+        `/liquidity_pools/${poolId}`,
+      );
       return response.data;
     } catch (error) {
       if (error.response?.status === 404) {

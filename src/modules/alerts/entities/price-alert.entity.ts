@@ -1,4 +1,11 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from "typeorm";
 import { AlertCondition, AlertMetric, QuoteSide } from "../alert-metrics";
 
 export type AlertStatus = "ACTIVE" | "TRIGGERED" | "PAUSED";

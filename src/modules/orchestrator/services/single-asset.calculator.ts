@@ -8,20 +8,34 @@ export const ceil7 = (n: number) => Math.ceil(n * STROOP - 1e-6) / STROOP;
  * that exists AFTER that swap (the swap itself moves the pool). Constant product with fee, closed form:
  *   f*x^2 + rIn*(1+f)*x - budget*rIn = 0     where f = 1 - fee
  */
-export function swapAmountForDeposit(budget: number, reserveIn: number, feeBp: number): number {
+export function swapAmountForDeposit(
+  budget: number,
+  reserveIn: number,
+  feeBp: number,
+): number {
   const f = 1 - feeBp / 10000;
   const b = reserveIn * (1 + f);
   return (-b + Math.sqrt(b * b + 4 * f * budget * reserveIn)) / (2 * f);
 }
 
 /** Output of swapping `x` in a constant product pool (fee stays in the pool). */
-export function amountOut(x: number, reserveIn: number, reserveOut: number, feeBp: number): number {
+export function amountOut(
+  x: number,
+  reserveIn: number,
+  reserveOut: number,
+  feeBp: number,
+): number {
   const f = 1 - feeBp / 10000;
   return (reserveOut * f * x) / (reserveIn + f * x);
 }
 
 /** Input needed to receive exactly `out` from a constant product pool. */
-export function amountIn(out: number, reserveIn: number, reserveOut: number, feeBp: number): number {
+export function amountIn(
+  out: number,
+  reserveIn: number,
+  reserveOut: number,
+  feeBp: number,
+): number {
   const f = 1 - feeBp / 10000;
   return (reserveIn * out) / ((reserveOut - out) * f);
 }
@@ -61,7 +75,9 @@ export interface SingleAssetPlan {
  * deposit can use all of it. Only the input asset can be left over. The budget is shrunk by the slippage
  * so that even the worst-case swap cost still leaves enough input for the deposit.
  */
-export function planSingleAssetDeposit(input: SingleAssetPlanInput): SingleAssetPlan {
+export function planSingleAssetDeposit(
+  input: SingleAssetPlanInput,
+): SingleAssetPlan {
   const { amount, reserveIn, reserveOut, feeBp, slippageBps } = input;
   if (!(amount > 0) || !(reserveIn > 0) || !(reserveOut > 0)) {
     throw new Error("Amount and pool reserves must be positive");

@@ -3,7 +3,11 @@ export type AlertCondition = "ABOVE" | "BELOW";
 /** Which pool asset a price or value is expressed in. */
 export type QuoteSide = "A" | "B";
 
-export const ALERT_METRICS: AlertMetric[] = ["PRICE", "POSITION_VALUE", "IMPERMANENT_LOSS_PCT"];
+export const ALERT_METRICS: AlertMetric[] = [
+  "PRICE",
+  "POSITION_VALUE",
+  "IMPERMANENT_LOSS_PCT",
+];
 
 export interface PoolSnapshot {
   reserveA: number;
@@ -14,16 +18,25 @@ export interface PoolSnapshot {
 }
 
 /** Units of `quoteSide` asset per one unit of the other asset. Needs no oracle: it is the pool's own ratio. */
-export function poolPrice(pool: PoolSnapshot, quoteSide: QuoteSide): number | null {
+export function poolPrice(
+  pool: PoolSnapshot,
+  quoteSide: QuoteSide,
+): number | null {
   if (!(pool.reserveA > 0) || !(pool.reserveB > 0)) return null;
-  return quoteSide === "A" ? pool.reserveA / pool.reserveB : pool.reserveB / pool.reserveA;
+  return quoteSide === "A"
+    ? pool.reserveA / pool.reserveB
+    : pool.reserveB / pool.reserveA;
 }
 
 /**
  * Worth of a wallet's LP shares, in units of the `quoteSide` asset. In a constant product pool both sides
  * hold equal value, so the position is twice its share of the quote side reserve.
  */
-export function positionValue(pool: PoolSnapshot, shares: number, quoteSide: QuoteSide): number | null {
+export function positionValue(
+  pool: PoolSnapshot,
+  shares: number,
+  quoteSide: QuoteSide,
+): number | null {
   if (!(shares > 0) || !(pool.totalShares > 0)) return null;
   const reserve = quoteSide === "A" ? pool.reserveA : pool.reserveB;
   return 2 * (shares / pool.totalShares) * reserve;
@@ -40,7 +53,13 @@ export function impermanentLossPct(
   depositedA: number,
   depositedB: number,
 ): number | null {
-  if (!(shares > 0) || !(pool.totalShares > 0) || !(pool.reserveA > 0) || !(pool.reserveB > 0)) return null;
+  if (
+    !(shares > 0) ||
+    !(pool.totalShares > 0) ||
+    !(pool.reserveA > 0) ||
+    !(pool.reserveB > 0)
+  )
+    return null;
 
   const heldInA = depositedA + depositedB * (pool.reserveA / pool.reserveB);
   if (!(heldInA > 0)) return null;
@@ -49,11 +68,18 @@ export function impermanentLossPct(
   return Math.max(0, ((heldInA - lpInA) / heldInA) * 100);
 }
 
-export function isTriggered(value: number, condition: AlertCondition, threshold: number): boolean {
+export function isTriggered(
+  value: number,
+  condition: AlertCondition,
+  threshold: number,
+): boolean {
   return condition === "ABOVE" ? value >= threshold : value <= threshold;
 }
 
-const num = (n: number) => (Math.abs(n) >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : n.toPrecision(4));
+const num = (n: number) =>
+  Math.abs(n) >= 1
+    ? n.toLocaleString("en-US", { maximumFractionDigits: 4 })
+    : n.toPrecision(4);
 
 export function describeAlert(a: {
   metric: AlertMetric;
@@ -76,7 +102,15 @@ export function describeAlert(a: {
   }
 }
 
-export function formatValue(metric: AlertMetric, value: number, codeA: string, codeB: string, quoteSide: QuoteSide): string {
+export function formatValue(
+  metric: AlertMetric,
+  value: number,
+  codeA: string,
+  codeB: string,
+  quoteSide: QuoteSide,
+): string {
   const quote = quoteSide === "A" ? codeA : codeB;
-  return metric === "IMPERMANENT_LOSS_PCT" ? `${num(value)}%` : `${num(value)} ${quote}`;
+  return metric === "IMPERMANENT_LOSS_PCT"
+    ? `${num(value)}%`
+    : `${num(value)} ${quote}`;
 }

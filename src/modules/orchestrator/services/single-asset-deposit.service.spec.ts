@@ -106,7 +106,11 @@ describe("SingleAssetDepositService", () => {
       balances: [
         { asset_type: "native", balance: "1000.0000000" },
         { asset_code: "TKN", asset_issuer: ISSUER, balance: "0" },
-        { asset_type: "liquidity_pool_shares", liquidity_pool_id: POOL_ID, balance: "0" },
+        {
+          asset_type: "liquidity_pool_shares",
+          liquidity_pool_id: POOL_ID,
+          balance: "0",
+        },
       ],
     });
     const tx: any = TransactionBuilder.fromXDR(res.xdr, PASSPHRASE);
@@ -117,9 +121,9 @@ describe("SingleAssetDepositService", () => {
   });
 
   it("rejects an asset that is not in the pool", async () => {
-    await expect(build({}, { ...dto, sourceAsset: "EURC" })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      build({}, { ...dto, sourceAsset: "EURC" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("rejects when the wallet cannot cover the amount plus reserves", async () => {
@@ -136,11 +140,15 @@ describe("SingleAssetDepositService", () => {
     const { service } = makeService({
       paths: [{ source_amount: "10", path: [{ asset_code: "USDC" }] }],
     });
-    await expect(service.build(USER, dto)).rejects.toThrow(/does not go through this pool alone/);
+    await expect(service.build(USER, dto)).rejects.toThrow(
+      /does not go through this pool alone/,
+    );
   });
 
   it("caps slippage at the configured maximum", async () => {
     const { service } = makeService({});
-    await expect(service.build(USER, { ...dto, slippageBps: 900 })).rejects.toThrow(/Slippage/);
+    await expect(
+      service.build(USER, { ...dto, slippageBps: 900 }),
+    ).rejects.toThrow(/Slippage/);
   });
 });

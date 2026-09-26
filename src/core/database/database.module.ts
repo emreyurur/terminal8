@@ -14,9 +14,10 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
         username: configService.get<string>("DB_USER", "terminal8"),
         password: configService.get<string>("DB_PASSWORD", "supersecret"),
         database: configService.get<string>("DB_NAME", "terminal8"),
-        ssl: configService.get<string>("DB_SSL") === "true"
-          ? { rejectUnauthorized: false }
-          : false,
+        ssl:
+          configService.get<string>("DB_SSL") === "true"
+            ? { rejectUnauthorized: false }
+            : false,
         autoLoadEntities: true,
         synchronize: true, // TODO: Üretimde false yapıp migration kullanılmalı
       }),

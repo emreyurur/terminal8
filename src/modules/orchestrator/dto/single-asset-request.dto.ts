@@ -13,7 +13,9 @@ export class BuildSingleAssetDepositDto {
   @IsString()
   sourceAsset: string;
 
-  @ApiProperty({ description: "Total amount of sourceAsset to put into the pool" })
+  @ApiProperty({
+    description: "Total amount of sourceAsset to put into the pool",
+  })
   @IsNumber()
   @IsPositive()
   amount: number;

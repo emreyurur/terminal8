@@ -5,7 +5,6 @@ import {
   Param,
   NotFoundException,
   Query,
-  Body,
 } from "@nestjs/common";
 
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from "@nestjs/swagger";
@@ -16,7 +15,7 @@ import { LiquidityPool } from "./entities/liquidity-pool.entity";
 @ApiTags("pools")
 @Controller("api/v1/pools")
 export class ScoutController {
-  constructor(private readonly scoutService: ScoutService) { }
+  constructor(private readonly scoutService: ScoutService) {}
 
   @Get()
   @ApiOperation({ summary: "Get all active liquidity pools with pagination" })
@@ -40,7 +39,9 @@ export class ScoutController {
   }
 
   @Get("recommended/:pubkey")
-  @ApiOperation({ summary: "Get recommended pools based on user's token balances" })
+  @ApiOperation({
+    summary: "Get recommended pools based on user's token balances",
+  })
   @ApiQuery({
     name: "page",
     required: false,
@@ -53,15 +54,22 @@ export class ScoutController {
     type: Number,
     description: "Items per page (default: 50)",
   })
-  @ApiResponse({ status: 200, description: "Paginated and ranked list of pools" })
+  @ApiResponse({
+    status: 200,
+    description: "Paginated and ranked list of pools",
+  })
   async getRecommendedPools(
     @Param("pubkey") pubkey: string,
     @Query("page") page?: string,
-    @Query("limit") limit?: string
+    @Query("limit") limit?: string,
   ) {
     const pageNumber = page ? parseInt(page, 10) : 1;
     const limitNumber = limit ? parseInt(limit, 10) : 50;
-    return this.scoutService.getRecommendedPools(pubkey, pageNumber, limitNumber);
+    return this.scoutService.getRecommendedPools(
+      pubkey,
+      pageNumber,
+      limitNumber,
+    );
   }
 
   @Get(":id")
@@ -99,7 +107,7 @@ export class ScoutController {
   @ApiResponse({ status: 201, description: "Snapshot process started" })
   async triggerSnapshot() {
     // Süreç arka planda devam eder, kullanıcıya hemen cevap döner
-    this.scoutService.takeDailySnapshots().catch(() => { });
+    this.scoutService.takeDailySnapshots().catch(() => {});
     return { message: "Snapshot process started in background" };
   }
 }
