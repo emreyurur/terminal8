@@ -49,8 +49,6 @@ export class OrchestratorService {
       throw new BadRequestException("Pool is empty");
     }
 
-    const currentPrice = reserveA / reserveB;
-
     let xdr: string;
 
     if (dto.action === TransactionAction.DEPOSIT) {
@@ -60,10 +58,12 @@ export class OrchestratorService {
         );
       }
 
-      const slippageBps = dto.slippageBps || this.config.defaultSlippageBps;
+      // Fiyat sınırı (Stellar expects Price of A in terms of B, which is B/A)
+      const currentPrice = reserveB / reserveA;
+      const slippageBps =
+        dto.slippageBps || this.config.defaultSlippageBps || 100;
       const slippageFactor = slippageBps / 10000;
 
-      // Fiyat sınırı
       const minPrice = currentPrice * (1 - slippageFactor);
       const maxPrice = currentPrice * (1 + slippageFactor);
 

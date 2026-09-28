@@ -27,15 +27,6 @@ import { CurrentUserPublicKey } from "../../shared/decorators/public-key.decorat
 export class PortfolioController {
   constructor(private readonly portfolioService: PortfolioService) {}
 
-  @Get(":publicKey")
-  @ApiOperation({ summary: "Get user portfolio (PnL, IL, Balances)" })
-  @ApiResponse({ status: 200, type: PortfolioResponseDto })
-  async getPortfolio(
-    @Param("publicKey") publicKey: string,
-  ): Promise<PortfolioResponseDto> {
-    return this.portfolioService.getPortfolio(publicKey);
-  }
-
   @Get("lending-dashboard/:publicKey")
   @ApiOperation({
     summary: "Get lending-style dashboard (using real AMM data)",
@@ -55,19 +46,22 @@ export class PortfolioController {
     return this.portfolioService.getPositionChartData(publicKey, poolId, range);
   }
 
+  @Get(":publicKey")
+  @ApiOperation({ summary: "Get user portfolio (PnL, IL, Balances)" })
+  @ApiResponse({ status: 200, type: PortfolioResponseDto })
+  async getPortfolio(
+    @Param("publicKey") publicKey: string,
+  ): Promise<PortfolioResponseDto> {
+    return this.portfolioService.getPortfolio(publicKey);
+  }
+
   @Post("sync")
   @ApiOperation({ summary: "Sync user position after successful transaction" })
   async syncPosition(
     @CurrentUserPublicKey() publicKey: string,
     @Body() dto: SyncPositionDto,
   ) {
-    await this.portfolioService.syncPosition(
-      publicKey,
-      dto.poolId,
-      dto.sharesAmount,
-      dto.assetAAmount,
-      dto.assetBAmount,
-    );
+    await this.portfolioService.syncPosition(publicKey, dto.poolId);
     return { success: true };
   }
 }

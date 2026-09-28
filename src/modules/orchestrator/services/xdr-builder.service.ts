@@ -74,7 +74,7 @@ export class XdrBuilderService {
           liquidityPoolId: pool.id,
           maxAmountA: maxAmountA.toFixed(7),
           maxAmountB: maxAmountB.toFixed(7),
-          minPrice: minPrice.toFixed(7), // P = A/B
+          minPrice: minPrice.toFixed(7), // P = B/A
           maxPrice: maxPrice.toFixed(7),
         }),
       )

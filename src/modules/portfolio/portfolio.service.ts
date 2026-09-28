@@ -156,47 +156,12 @@ export class PortfolioService {
     }
   }
 
-  // Frontend'den başarılı işlem sonrasında webhook/callback geldiğinde veya
-  // Horizon üzerinden adresin geçmiş işlemleri tarandığında çağrılır
-  async syncPosition(
-    publicKey: string,
-    poolId: string,
-    sharesAmount: string,
-    assetAAmount: string,
-    assetBAmount: string,
-  ) {
-    let position = await this.positionRepository.findOne({
-      where: { userPublicKey: publicKey, poolId },
-    });
-
-    if (!position) {
-      position = this.positionRepository.create({
-        userPublicKey: publicKey,
-        poolId,
-        sharesOwned: sharesAmount || "0",
-        assetADeposited: assetAAmount || "0",
-        assetBDeposited: assetBAmount || "0",
-        firstDepositAt: new Date(),
-        lastUpdatedAt: new Date(),
-      });
-    } else {
-      // Eğer mevcutsa üzerine ekleniyor (basit logic, gerçekte average cost basis hesabı gerekir)
-      position.sharesOwned = (
-        parseFloat(position.sharesOwned || "0") +
-        parseFloat(sharesAmount || "0")
-      ).toString();
-      position.assetADeposited = (
-        parseFloat(position.assetADeposited || "0") +
-        parseFloat(assetAAmount || "0")
-      ).toString();
-      position.assetBDeposited = (
-        parseFloat(position.assetBDeposited || "0") +
-        parseFloat(assetBAmount || "0")
-      ).toString();
-      position.lastUpdatedAt = new Date();
-    }
-
-    await this.positionRepository.save(position);
+  // Frontend'den başarılı işlem sonrasında webhook/callback geldiğinde çağrılır
+  async syncPosition(publicKey: string, poolId: string) {
+    // İşlem başarılı olduktan sonra doğrudan ağdan en güncel havuz ve bakiye bilgilerini çekiyoruz.
+    // Frontend'in gönderdiği tahmini "10.0" share gibi değerleri eklemek Interest Earned bug'ına yol açıyor.
+    await this.scoutService.forceFetchPool(poolId);
+    await this.syncBlockchainBalances(publicKey);
   }
 
   async getLendingDashboard(publicKey: string) {
@@ -281,7 +246,7 @@ export class PortfolioService {
         vaultDepositsUsd, // For this specific user, the "Vault Deposits" is their portfolio value
       },
       userOverview: {
-        activePositions: positions.length,
+        activePositions: assets.length,
         positionsValueUsd: vaultDepositsUsd,
         avgApy:
           assets.length > 0
