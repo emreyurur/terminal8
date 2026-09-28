@@ -88,6 +88,42 @@ kbd {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.metric-skeleton {
+  position: relative;
+  display: inline-block;
+  width: 6.5rem;
+  height: 1.35rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.025);
+  border-radius: 4px;
+  background: #1B2230;
+}
+
+.metric-skeleton--compact {
+  width: 4.5rem;
+  height: 0.875rem;
+}
+
+.metric-skeleton::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.055) 48%,
+    transparent 78%
+  );
+  content: "";
+  transform: translateX(-110%);
+  animation: metric-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes metric-skeleton-shimmer {
+  to {
+    transform: translateX(110%);
+  }
+}
+
 @keyframes fadeSlideUp {
   from {
     opacity: 0;
@@ -151,5 +187,9 @@ kbd {
   .hero-content {
     animation: none !important;
     opacity: 1 !important;
+  }
+
+  .metric-skeleton::after {
+    animation: none;
   }
 }

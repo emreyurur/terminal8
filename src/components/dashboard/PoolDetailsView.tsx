@@ -15,6 +15,7 @@ import {
 import { computeWithdrawShares } from '../../lib/lpShares'
 import { buildPositionMetricSeries, type PositionMetric, type PositionMetricPoint } from '../../lib/positionMetrics'
 import { findActivePositionForPool } from '../../lib/vaultVoting'
+import { MetricValueFallback } from './MetricValueFallback'
 import { SingleAssetDepositPanel } from './SingleAssetDepositPanel'
 import { TransactionReceipt } from './TransactionReceipt'
 import { executeOnChainTrustVote, fetchOnChainPoolScore } from '../../services/poolVotingContract'
@@ -352,6 +353,7 @@ export function PoolDetailsView({
   onPositionAdded,
   onPositionRemoved,
   pool,
+  positionMetricsLoading = false,
   userPositions = [],
 }: {
   available: number
@@ -361,6 +363,7 @@ export function PoolDetailsView({
   onPositionAdded: (pos: Omit<LocalPosition, 'id'>) => void
   onPositionRemoved?: (id: string, amount: number) => void
   pool: DeFiPool
+  positionMetricsLoading?: boolean
   userPositions?: LocalPosition[]
 }) {
   const { connect, networkPassphrase, networkUrl, publicKey, status } = useWallet()
@@ -827,7 +830,11 @@ export function PoolDetailsView({
       ) : (
         <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-white sm:text-2xl">{hasPositionValue ? `$${suppliedUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}</p>
+            <p className="font-mono flex h-8 items-center text-xl font-extrabold text-white sm:text-2xl">
+              {hasPositionValue
+                ? `$${suppliedUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : <MetricValueFallback loading={positionMetricsLoading} />}
+            </p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Position Value</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
@@ -838,11 +845,19 @@ export function PoolDetailsView({
             <p className="mt-1 text-xs text-[#9CA3AF]">Staked Shares</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">{hasPositionPnl ? `+$${safeEarnedUsd.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : '--'}</p>
+            <p className="font-mono flex h-8 items-center text-xl font-extrabold text-[#16A34A] sm:text-2xl">
+              {hasPositionPnl
+                ? `+$${safeEarnedUsd.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`
+                : <MetricValueFallback loading={positionMetricsLoading} />}
+            </p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Interest Earned</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono text-xl font-extrabold text-[#16A34A] sm:text-2xl">{hasPositionValue ? `+$${(suppliedUsdValue * (supplyApy / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : '--'}</p>
+            <p className="font-mono flex h-8 items-center text-xl font-extrabold text-[#16A34A] sm:text-2xl">
+              {hasPositionValue
+                ? `+$${(suppliedUsdValue * (supplyApy / 100) / 365).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`
+                : <MetricValueFallback loading={positionMetricsLoading} />}
+            </p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Daily Interest</p>
           </div>
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-white/[0.08] bg-[#111119] p-5">

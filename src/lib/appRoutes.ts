@@ -48,38 +48,40 @@ export function buildAppPath(route: AppRoute): string {
 }
 
 export function getRouteMetadata(route: AppRoute): { title: string; description: string } {
+  const title = 'Terminal8 | Stellar DeFi App'
+
   if (route.page === 'docs') {
     return {
-      title: 'Documentation | Terminal8',
+      title,
       description: 'Learn how to discover Stellar liquidity pools, deposit assets, manage positions, and use Terminal8.',
     }
   }
   if (route.page === 'tester') {
     return {
-      title: 'API Tester | Terminal8',
+      title,
       description: 'Inspect Terminal8 Stellar API requests and responses.',
     }
   }
   if (route.page === 'home' && route.poolId && route.detailTab === 'position') {
     return {
-      title: 'Manage Position | Terminal8',
+      title,
       description: 'Review performance, deposit liquidity, or withdraw from your Stellar position.',
     }
   }
   if (route.page === 'home' && route.poolId) {
     return {
-      title: 'Pool Details | Terminal8',
+      title,
       description: 'Review pool performance, risk, liquidity, and deposit options on Stellar.',
     }
   }
   if (route.page === 'home') {
     return {
-      title: 'Stellar DeFi App | Terminal8',
+      title,
       description: 'Discover Stellar liquidity pools and manage your DeFi positions from one interface.',
     }
   }
   return {
-    title: 'Terminal8 | Stellar DeFi App',
+    title,
     description: 'Discover, evaluate, and manage Stellar DeFi opportunities with Terminal8.',
   }
 }

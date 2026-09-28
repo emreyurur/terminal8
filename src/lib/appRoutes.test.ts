@@ -23,7 +23,7 @@ describe('app routes', () => {
   })
 
   it('provides distinct SEO metadata for route types', () => {
-    expect(getRouteMetadata({ page: 'docs' }).title).toContain('Documentation')
-    expect(getRouteMetadata({ page: 'home', poolId: 'abc', detailTab: 'position' }).title).toContain('Manage Position')
+    expect(getRouteMetadata({ page: 'docs' }).title).toBe('Terminal8 | Stellar DeFi App')
+    expect(getRouteMetadata({ page: 'home', poolId: 'abc', detailTab: 'position' }).title).toBe('Terminal8 | Stellar DeFi App')
   })
 })

@@ -12,6 +12,7 @@ import { usePortfolioDashboard } from '../../hooks/usePortfolioDashboard'
 import type { DeFiPool, LocalPosition, RiskProfile, WalletBalance } from '../../types/stellar'
 import { usePools } from '../../hooks/usePools'
 import { usePoolRisk } from '../../hooks/usePoolRisk'
+import { MetricValueFallback } from './MetricValueFallback'
 import { PoolDetailsView } from './PoolDetailsView'
 
 class SafeErrorBoundary extends Component<{ onReset: () => void; children: ReactNode }, { hasError: boolean; errorMessage: string; errorStack: string }> {
@@ -244,6 +245,7 @@ export function DefiOperations({
 
   const { publicKey } = useWallet()
   const portfolioState = usePortfolioDashboard(publicKey)
+  const positionMetricsLoading = portfolioState.state.status === 'idle' || portfolioState.state.status === 'loading'
 
   const displayPositions = useMemo(() => {
     if (!publicKey) return []
@@ -389,6 +391,7 @@ export function DefiOperations({
             onWithdrawn(id, amount)
           }}
           pool={selectedPool}
+          positionMetricsLoading={positionMetricsLoading}
           userPositions={displayPositions.filter((p) => Boolean(p.poolId) && (p.poolId === selectedPool.id || (selectedPool.contractId && p.poolId === selectedPool.contractId)))}
         />
       </SafeErrorBoundary>
@@ -433,7 +436,11 @@ export function DefiOperations({
                     </div>
                     <div className="border-l border-white/[0.07] p-4 sm:px-5">
                       <p className="text-xs text-[#718096]">Supplied</p>
-                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-white">{totalValUsd === null ? '--' : `$${formatUsd(totalValUsd)}`}</p>
+                      <p className="font-terminal mt-1.5 flex h-7 items-center text-lg font-medium tabular-nums text-white">
+                        {totalValUsd === null
+                          ? <MetricValueFallback loading={positionMetricsLoading} />
+                          : `$${formatUsd(totalValUsd)}`}
+                      </p>
                     </div>
                     <div className="border-t border-white/[0.07] p-4 sm:px-5 lg:border-l lg:border-t-0">
                       <p className="text-xs text-[#718096]">Avg APY</p>
@@ -441,7 +448,11 @@ export function DefiOperations({
                     </div>
                     <div className="border-l border-t border-white/[0.07] p-4 sm:px-5 lg:border-t-0">
                       <p className="text-xs text-[#718096]">Earned</p>
-                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-[#35D49A]">{totalEarnedUsd === null ? '--' : formatEarnedUsd(totalEarnedUsd)}</p>
+                      <p className="font-terminal mt-1.5 flex h-7 items-center text-lg font-medium tabular-nums text-[#35D49A]">
+                        {totalEarnedUsd === null
+                          ? <MetricValueFallback loading={positionMetricsLoading} />
+                          : formatEarnedUsd(totalEarnedUsd)}
+                      </p>
                     </div>
                   </div>
                 )
@@ -484,8 +495,17 @@ export function DefiOperations({
                           <span className="flex items-center gap-2 text-sm font-medium text-[#35D49A]">
                             {formatAmount(pos.apy, 1)}% <ChevronRight size={16} className="text-[#718096]" />
                           </span>
-                          <span className="col-start-1 text-xs text-[#98A6B7]">{formatTokenAmount(pos.amount)} {pos.asset} · {posValUsd === null ? '--' : `$${formatUsd(posValUsd)}`}</span>
-                          <span className="col-start-2 text-right text-xs text-[#35D49A]">{earnedUsd === null ? '--' : formatEarnedUsd(earnedUsd)}</span>
+                          <span className="col-start-1 flex min-h-5 items-center gap-1 text-xs text-[#98A6B7]">
+                            {formatTokenAmount(pos.amount)} {pos.asset} <span aria-hidden="true">&middot;</span>{' '}
+                            {posValUsd === null
+                              ? <MetricValueFallback compact loading={positionMetricsLoading} />
+                              : `$${formatUsd(posValUsd)}`}
+                          </span>
+                          <span className="col-start-2 flex min-h-5 items-center justify-end text-right text-xs text-[#35D49A]">
+                            {earnedUsd === null
+                              ? <MetricValueFallback compact loading={positionMetricsLoading} />
+                              : formatEarnedUsd(earnedUsd)}
+                          </span>
                         </button>
 
                         <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(180px,1.2fr)_110px_minmax(170px,1.2fr)_100px] items-center gap-6 px-6 py-4 transition hover:bg-white/[0.02] lg:grid">
@@ -498,11 +518,19 @@ export function DefiOperations({
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-white">{formatTokenAmount(pos.amount)} {pos.asset}</p>
-                            <p className="mt-0.5 text-xs text-[#718096]">{posValUsd === null ? '--' : `$${formatUsd(posValUsd)}`}</p>
+                            <p className="mt-0.5 flex min-h-5 items-center text-xs text-[#718096]">
+                              {posValUsd === null
+                                ? <MetricValueFallback compact loading={positionMetricsLoading} />
+                                : `$${formatUsd(posValUsd)}`}
+                            </p>
                           </div>
                           <span className="text-sm font-medium text-[#35D49A]">{formatAmount(pos.apy, 1)}%</span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-[#35D49A]">{earnedUsd === null ? '--' : formatEarnedUsd(earnedUsd)}</p>
+                            <p className="flex min-h-5 items-center truncate text-sm font-medium text-[#35D49A]">
+                              {earnedUsd === null
+                                ? <MetricValueFallback compact loading={positionMetricsLoading} />
+                                : formatEarnedUsd(earnedUsd)}
+                            </p>
                           </div>
                           <button className="h-9 rounded-md bg-[#1A2230] px-4 text-sm font-medium text-white transition hover:bg-[#222C3B]" onClick={openPosition} type="button">Manage</button>
                         </div>
