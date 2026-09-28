@@ -1,9 +1,11 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, Info, Search, X } from 'lucide-react'
 import xlmLogo from '../../assets/xlm.svg'
 import usdcLogo from '../../assets/usdc.svg'
 import aquaLogo from '../../assets/aquaris.svg'
 import { useWallet } from '../../context/useWallet'
+import { formatSignedCurrency } from '../../lib/format'
+import { applyLivePoolApys } from '../../lib/positions'
 import { classifyWalletError } from '../../lib/walletErrors'
 import { estimateSecondaryAmount } from '../../services/soroswapLiquidity'
 import { executeApiPoolTransaction } from '../../services/terminal8Api'
@@ -89,8 +91,14 @@ function formatTokenAmount(val: number | string): string {
 }
 
 function formatEarnedUsd(val: number): string {
-  if (val > 0 && val < 0.01) return '<$0.01'
-  return `+$${formatUsd(val)}`
+  const decimals = Math.abs(val) > 0 && Math.abs(val) < 0.01 ? 4 : 2
+  return formatSignedCurrency(val, decimals)
+}
+
+function pnlTextColor(value: number): string {
+  if (value < 0) return 'text-[#FF5C6C]'
+  if (value > 0) return 'text-[#35D49A]'
+  return 'text-[#98A6B7]'
 }
 
 function healthScoreLabel(score: number): 'Trusted' | 'Moderate' | 'Risky' {
@@ -244,12 +252,45 @@ export function DefiOperations({
   }
 
   const { publicKey } = useWallet()
-  const portfolioState = usePortfolioDashboard(publicKey)
-  const positionMetricsLoading = portfolioState.state.status === 'idle' || portfolioState.state.status === 'loading'
+  const { state: portfolioDashboardState, refresh: refreshPortfolio } = usePortfolioDashboard(publicKey)
+  const [transactionMetricsSyncing, setTransactionMetricsSyncing] = useState(false)
+  const metricsRefreshGeneration = useRef(0)
+  const metricsRefreshTimers = useRef<number[]>([])
+
+  const clearMetricsRefreshTimers = useCallback(() => {
+    metricsRefreshTimers.current.forEach((timer) => window.clearTimeout(timer))
+    metricsRefreshTimers.current = []
+  }, [])
+
+  const refreshPositionMetricsAfterTransaction = useCallback(() => {
+    clearMetricsRefreshTimers()
+    const generation = ++metricsRefreshGeneration.current
+    setTransactionMetricsSyncing(true)
+    void refreshPortfolio(false)
+
+    const delays = [1_500, 3_500, 6_000]
+    metricsRefreshTimers.current = delays.map((delay, index) => window.setTimeout(() => {
+      void refreshPortfolio(true).finally(() => {
+        const isFinalAttempt = index === delays.length - 1
+        if (isFinalAttempt && generation === metricsRefreshGeneration.current) {
+          setTransactionMetricsSyncing(false)
+        }
+      })
+    }, delay))
+  }, [clearMetricsRefreshTimers, refreshPortfolio])
+
+  useEffect(() => () => {
+    metricsRefreshGeneration.current += 1
+    clearMetricsRefreshTimers()
+  }, [clearMetricsRefreshTimers])
+
+  const positionMetricsLoading = transactionMetricsSyncing || portfolioDashboardState.status === 'idle' || portfolioDashboardState.status === 'loading'
+  const poolsState = usePools(publicKey)
+  const activePools = useMemo(() => poolsState.status === 'success' ? poolsState.pools : [], [poolsState])
 
   const displayPositions = useMemo(() => {
     if (!publicKey) return []
-    const apiPosList = portfolioState.state.status === 'success' ? portfolioState.state.data.portfolio.positions : []
+    const apiPosList = portfolioDashboardState.status === 'success' ? portfolioDashboardState.data.portfolio.positions : []
     const validApiList = apiPosList.filter((apiP) => {
       if (!apiP) return false
       const cat = String(apiP.category || apiP.type || '').toUpperCase()
@@ -263,17 +304,21 @@ export function DefiOperations({
       }
       return true
     })
+    const apiApyByPool = new Map<string, number>()
     const mappedApi: LocalPosition[] = validApiList.map((apiP, idx) => {
       const pId = String(apiP.poolId ?? apiP.pool_id ?? apiP.contractId ?? apiP.contract_id ?? apiP.poolAddress ?? apiP.pool_address ?? apiP.pool ?? apiP.id ?? '')
       const assetStr = String(apiP.asset ?? apiP.tokenSymbol ?? apiP.tokenCode ?? apiP.tokens ?? apiP.assetCode ?? apiP.asset_code ?? apiP.symbol ?? apiP.pair ?? apiP.assetA ?? apiP.asset_a ?? 'XLM')
       const rawCurrentValueUsd = apiP.currentValueUsd ?? apiP.valueUsd
       const rawPnlUsd = apiP.pnlUsd
+      const rawApy = apiP.apy ?? apiP.estimatedApy
+      const apiApy = rawApy != null && Number.isFinite(Number(rawApy)) ? Number(rawApy) : null
+      if (pId && apiApy !== null) apiApyByPool.set(pId, apiApy)
       return {
         id: `api_pos_${idx}_${pId || assetStr}`,
         poolId: pId,
         asset: assetStr,
         amount: Number(apiP.amount ?? apiP.sharesOwned ?? apiP.shares ?? apiP.balance ?? 0),
-        apy: Number.isFinite(Number(apiP.apy ?? apiP.estimatedApy)) ? Number(apiP.apy ?? apiP.estimatedApy) : 0,
+        apy: apiApy ?? 0,
         openedAt: Number.isFinite(Number(apiP.timestamp ?? apiP.openedAt)) ? Number(apiP.timestamp ?? apiP.openedAt) : 0,
         hash: String(apiP.hash ?? apiP.txHash ?? ''),
         protocol: String(apiP.protocol ?? 'Soroswap AMM'),
@@ -291,8 +336,10 @@ export function DefiOperations({
     for (const p of mappedApi) {
       const existingIndex = combined.findIndex((candidate) => Boolean(candidate.poolId) && candidate.poolId === p.poolId)
       if (existingIndex >= 0) {
+        const apiApy = apiApyByPool.get(p.poolId)
         combined[existingIndex] = {
           ...combined[existingIndex],
+          ...(apiApy === undefined ? {} : { apy: apiApy }),
           currentValueUsd: p.currentValueUsd,
           pnlUsd: p.pnlUsd,
           sharesOwned: p.sharesOwned,
@@ -301,11 +348,8 @@ export function DefiOperations({
         combined.push(p)
       }
     }
-    return combined
-  }, [publicKey, positions, portfolioState.state])
-
-  const poolsState = usePools(publicKey)
-  const activePools = poolsState.status === 'success' ? poolsState.pools : []
+    return applyLivePoolApys(combined, activePools)
+  }, [activePools, publicKey, positions, portfolioDashboardState])
 
   const filteredPools = activePools.filter((pool) => {
     const pairStr = `${pool.asset} ${pool.secondaryAsset ?? ''} ${pool.protocol}`.toLowerCase()
@@ -351,7 +395,7 @@ export function DefiOperations({
     ? [xlmFeaturedPool, ...activePools.filter((pool) => pool.id !== xlmFeaturedPool.id).slice(0, 2)]
     : activePools.slice(0, 3)
   const hasOpenPosition = displayPositions.length > 0
-  const portfolioCheckComplete = !publicKey || portfolioState.state.status === 'success' || portfolioState.state.status === 'error'
+  const portfolioCheckComplete = !publicKey || portfolioDashboardState.status === 'success' || portfolioDashboardState.status === 'error'
   const shouldShowXlmGuide = showXlmGuide && !hasOpenPosition && !hasCompletedXlmTestnetGuide() && portfolioCheckComplete
 
   useEffect(() => {
@@ -390,6 +434,7 @@ export function DefiOperations({
           onPositionRemoved={(id, amount) => {
             onWithdrawn(id, amount)
           }}
+          onPositionMetricsRefresh={refreshPositionMetricsAfterTransaction}
           pool={selectedPool}
           positionMetricsLoading={positionMetricsLoading}
           userPositions={displayPositions.filter((p) => Boolean(p.poolId) && (p.poolId === selectedPool.id || (selectedPool.contractId && p.poolId === selectedPool.contractId)))}
@@ -444,11 +489,11 @@ export function DefiOperations({
                     </div>
                     <div className="border-t border-white/[0.07] p-4 sm:px-5 lg:border-l lg:border-t-0">
                       <p className="text-xs text-[#718096]">Avg APY</p>
-                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-[#35D49A]">{formatAmount(displayApy, 1)}%</p>
+                      <p className="font-terminal mt-1.5 text-lg font-medium tabular-nums text-[#35D49A]">{formatAmount(displayApy, 2)}%</p>
                     </div>
                     <div className="border-l border-t border-white/[0.07] p-4 sm:px-5 lg:border-t-0">
                       <p className="text-xs text-[#718096]">Earned</p>
-                      <p className="font-terminal mt-1.5 flex h-7 items-center text-lg font-medium tabular-nums text-[#35D49A]">
+                      <p className={`font-terminal mt-1.5 flex h-7 items-center text-lg font-medium tabular-nums ${totalEarnedUsd === null ? 'text-[#98A6B7]' : pnlTextColor(totalEarnedUsd)}`}>
                         {totalEarnedUsd === null
                           ? <MetricValueFallback loading={positionMetricsLoading} />
                           : formatEarnedUsd(totalEarnedUsd)}
@@ -493,7 +538,7 @@ export function DefiOperations({
                             </span>
                           </span>
                           <span className="flex items-center gap-2 text-sm font-medium text-[#35D49A]">
-                            {formatAmount(pos.apy, 1)}% <ChevronRight size={16} className="text-[#718096]" />
+                            {formatAmount(pos.apy, 2)}% <ChevronRight size={16} className="text-[#718096]" />
                           </span>
                           <span className="col-start-1 flex min-h-5 items-center gap-1 text-xs text-[#98A6B7]">
                             {formatTokenAmount(pos.amount)} {pos.asset} <span aria-hidden="true">&middot;</span>{' '}
@@ -501,7 +546,7 @@ export function DefiOperations({
                               ? <MetricValueFallback compact loading={positionMetricsLoading} />
                               : `$${formatUsd(posValUsd)}`}
                           </span>
-                          <span className="col-start-2 flex min-h-5 items-center justify-end text-right text-xs text-[#35D49A]">
+                          <span className={`col-start-2 flex min-h-5 items-center justify-end text-right text-xs ${earnedUsd === null ? 'text-[#98A6B7]' : pnlTextColor(earnedUsd)}`}>
                             {earnedUsd === null
                               ? <MetricValueFallback compact loading={positionMetricsLoading} />
                               : formatEarnedUsd(earnedUsd)}
@@ -524,9 +569,9 @@ export function DefiOperations({
                                 : `$${formatUsd(posValUsd)}`}
                             </p>
                           </div>
-                          <span className="text-sm font-medium text-[#35D49A]">{formatAmount(pos.apy, 1)}%</span>
+                          <span className="text-sm font-medium text-[#35D49A]">{formatAmount(pos.apy, 2)}%</span>
                           <div className="min-w-0">
-                            <p className="flex min-h-5 items-center truncate text-sm font-medium text-[#35D49A]">
+                            <p className={`flex min-h-5 items-center truncate text-sm font-medium ${earnedUsd === null ? 'text-[#98A6B7]' : pnlTextColor(earnedUsd)}`}>
                               {earnedUsd === null
                                 ? <MetricValueFallback compact loading={positionMetricsLoading} />
                                 : formatEarnedUsd(earnedUsd)}

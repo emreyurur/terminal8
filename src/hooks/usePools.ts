@@ -93,10 +93,12 @@ export function mapApiPoolToDeFiPool(
   const depositsAvailable = Number.isFinite(supplied)
   const dashboardApy = Number(metrics.dashboard?.vaultOverview?.supplyApy)
   const estimatedApy = Number(metrics.risk?.estimatedApy)
-  const apyAvailable = Number.isFinite(dashboardApy) || Number.isFinite(estimatedApy)
+  const hasDashboardApy = Number.isFinite(dashboardApy)
+  const hasEstimatedApy = Number.isFinite(estimatedApy) && estimatedApy > 0
+  const apyAvailable = hasDashboardApy || hasEstimatedApy
   const apy = Number.isFinite(dashboardApy)
     ? dashboardApy
-    : Number.isFinite(estimatedApy) ? estimatedApy : 0
+    : hasEstimatedApy ? estimatedApy : 0
   const trustScore = Number(metrics.risk?.trustScore)
   const compositeScore = Number(metrics.risk?.compositeScore)
 

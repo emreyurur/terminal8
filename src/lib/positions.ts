@@ -1,4 +1,22 @@
-import type { LocalPosition } from '../types/stellar'
+import type { DeFiPool, LocalPosition } from '../types/stellar'
+
+type LivePoolApy = Pick<DeFiPool, 'apy' | 'apyAvailable' | 'contractId' | 'id'>
+
+/** Uses the latest pool metric for open positions instead of the APY captured when they were created. */
+export function applyLivePoolApys(positions: LocalPosition[], pools: LivePoolApy[]): LocalPosition[] {
+  return positions.map((position) => {
+    const positionPoolId = position.poolId.trim().toLowerCase()
+    if (!positionPoolId) return position
+
+    const pool = pools.find((candidate) => (
+      candidate.id.trim().toLowerCase() === positionPoolId
+      || candidate.contractId.trim().toLowerCase() === positionPoolId
+    ))
+    if (!pool?.apyAvailable || !Number.isFinite(pool.apy)) return position
+    if (position.apy === pool.apy) return position
+    return { ...position, apy: pool.apy }
+  })
+}
 
 /**
  * Folds positions in the same pool into one, so repeated deposits show up as a single row.

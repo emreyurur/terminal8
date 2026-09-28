@@ -2,9 +2,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DeFiPool, LocalPosition } from '../../types/stellar'
 import { executeOnChainTrustVote, fetchOnChainPoolScore } from '../../services/poolVotingContract'
+import { executeApiPoolTransaction, getOnChainLpShares } from '../../services/terminal8Api'
 import { PoolDetailsView } from './PoolDetailsView'
 
 const usePoolRiskMock = vi.hoisted(() => vi.fn())
+const refreshPoolDashboardMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('../../context/useWallet', () => ({
   useWallet: () => ({
@@ -17,7 +19,9 @@ vi.mock('../../context/useWallet', () => ({
 }))
 
 vi.mock('../../hooks/usePoolRisk', () => ({ usePoolRisk: usePoolRiskMock }))
-vi.mock('../../hooks/usePoolDashboard', () => ({ usePoolDashboard: () => ({ status: 'idle' }) }))
+vi.mock('../../hooks/usePoolDashboard', () => ({
+  usePoolDashboard: () => ({ state: { status: 'idle' }, refresh: refreshPoolDashboardMock }),
+}))
 vi.mock('../../services/terminal8Api', () => ({
   executeApiPoolTransaction: vi.fn(),
   fetchTransactionHistory: vi.fn().mockResolvedValue([]),
@@ -59,13 +63,22 @@ const activePosition: LocalPosition = {
   poolId: pool.id,
 }
 
-function renderView(userPositions: LocalPosition[] = []) {
+function renderView(
+  userPositions: LocalPosition[] = [],
+  callbacks: {
+    onPositionAdded?: (position: Omit<LocalPosition, 'id'>) => void
+    onPositionMetricsRefresh?: () => void
+    onPositionRemoved?: (id: string, amount: number) => void
+  } = {},
+) {
   return render(
     <PoolDetailsView
       available={100}
       initialTab="overview"
       onBack={() => {}}
-      onPositionAdded={() => {}}
+      onPositionAdded={callbacks.onPositionAdded ?? (() => {})}
+      onPositionMetricsRefresh={callbacks.onPositionMetricsRefresh}
+      onPositionRemoved={callbacks.onPositionRemoved}
       pool={pool}
       userPositions={userPositions}
     />,
@@ -150,5 +163,37 @@ describe('PoolDetailsView on-chain vault voting', () => {
     expect(trusted).toBeDisabled()
     expect(screen.getByText('On-chain vote totals are currently unavailable.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('refreshes portfolio and pool metrics after a confirmed deposit', async () => {
+    const onPositionAdded = vi.fn()
+    const onPositionMetricsRefresh = vi.fn()
+    vi.mocked(executeApiPoolTransaction).mockResolvedValue({ hash: 'deposit-hash', status: 'SUCCESS', xdr: 'xdr' })
+
+    const view = renderView([], { onPositionAdded, onPositionMetricsRefresh })
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Deposit 10 XLM' }))
+
+    await waitFor(() => expect(onPositionAdded).toHaveBeenCalledTimes(1))
+    expect(onPositionMetricsRefresh).toHaveBeenCalledTimes(1)
+    expect(refreshPoolDashboardMock).toHaveBeenCalledWith(false)
+    view.unmount()
+  })
+
+  it('refreshes portfolio and pool metrics after a confirmed withdrawal', async () => {
+    const onPositionMetricsRefresh = vi.fn()
+    const onPositionRemoved = vi.fn()
+    vi.mocked(getOnChainLpShares).mockResolvedValue('10')
+    vi.mocked(executeApiPoolTransaction).mockResolvedValue({ hash: 'withdraw-hash', status: 'SUCCESS', xdr: 'xdr' })
+
+    const view = renderView([activePosition], { onPositionMetricsRefresh, onPositionRemoved })
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }))
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw 5 XLM' }))
+
+    await waitFor(() => expect(onPositionRemoved).toHaveBeenCalledWith(activePosition.id, 5))
+    expect(onPositionMetricsRefresh).toHaveBeenCalledTimes(1)
+    expect(refreshPoolDashboardMock).toHaveBeenCalledWith(false)
+    view.unmount()
   })
 })

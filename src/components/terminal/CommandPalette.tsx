@@ -79,7 +79,7 @@ export function CommandPalette({ commandContext, lines, open, onClear, onClose, 
             autoComplete="off"
             className="w-full bg-transparent font-terminal text-xl text-[#F0F0F0] outline-none placeholder:text-[#9CA3AF]"
             onChange={(e) => setInput(e.target.value)}
-            placeholder="pools · deposit 1 10 10 · withdraw 1 --full"
+            placeholder="help · pools · deposit 1 10 10 · withdraw 1 --full"
             value={input}
           />
         </form>
@@ -235,7 +235,7 @@ export function BottomTerminal({
             className="min-w-0 flex-1 bg-transparent font-terminal text-sm outline-none placeholder:text-[#9CA3AF]"
             disabled={executing}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={executing ? '' : 'pools · deposit 1 10 10 · withdraw 1 --full'}
+            placeholder={executing ? '' : 'help · pools · deposit 1 10 10 · withdraw 1 --full'}
             value={input}
           />
           {input && !executing && (

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   fetchLendingDashboard,
   fetchUserPortfolio,
@@ -19,13 +19,15 @@ export type PortfolioDashboardState =
 
 export function usePortfolioDashboard(publicKey: string | null) {
   const [state, setState] = useState<PortfolioDashboardState>({ status: 'idle' })
+  const requestVersion = useRef(0)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
+    const version = ++requestVersion.current
     if (!publicKey) {
       setState({ status: 'idle' })
       return
     }
-    setState({ status: 'loading' })
+    if (!silent) setState({ status: 'loading' })
     try {
       const [lendingDashboard, portfolio] = await Promise.all([
         fetchLendingDashboard(publicKey).catch(() => ({}) as LendingDashboardResponse),
@@ -36,12 +38,14 @@ export function usePortfolioDashboard(publicKey: string | null) {
           positions: [],
         })),
       ])
-      setState({
-        status: 'success',
-        data: { lendingDashboard, portfolio },
-      })
+      if (version === requestVersion.current) {
+        setState({
+          status: 'success',
+          data: { lendingDashboard, portfolio },
+        })
+      }
     } catch {
-      setState({ status: 'error' })
+      if (!silent && version === requestVersion.current) setState({ status: 'error' })
     }
   }, [publicKey])
 
@@ -49,6 +53,9 @@ export function usePortfolioDashboard(publicKey: string | null) {
     queueMicrotask(() => {
       refresh()
     })
+    return () => {
+      requestVersion.current += 1
+    }
   }, [refresh])
 
   return { state, refresh }

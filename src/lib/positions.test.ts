@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPosition, mergePositionsByPool } from './positions'
+import { addPosition, applyLivePoolApys, mergePositionsByPool } from './positions'
 import type { LocalPosition } from '../types/stellar'
 
 const pos = (over: Partial<LocalPosition>): LocalPosition => ({
@@ -50,5 +50,40 @@ describe('addPosition', () => {
     const out = addPosition([pos({ id: 'old', amount: 2 })], pos({ id: 'new', amount: 3 }))
     expect(out).toHaveLength(1)
     expect(out[0].amount).toBe(5)
+  })
+})
+
+describe('applyLivePoolApys', () => {
+  it('replaces a stale position APY with the live pool APY', () => {
+    const out = applyLivePoolApys([pos({ apy: 0, poolId: 'pool-yrk' })], [{
+      apy: 18.75,
+      apyAvailable: true,
+      contractId: 'contract-yrk',
+      id: 'pool-yrk',
+    }])
+
+    expect(out[0].apy).toBe(18.75)
+  })
+
+  it('matches a position by contract ID', () => {
+    const out = applyLivePoolApys([pos({ apy: 0, poolId: 'contract-yrk' })], [{
+      apy: 18.75,
+      apyAvailable: true,
+      contractId: 'contract-yrk',
+      id: 'pool-yrk',
+    }])
+
+    expect(out[0].apy).toBe(18.75)
+  })
+
+  it('keeps the stored APY when live metrics are unavailable', () => {
+    const out = applyLivePoolApys([pos({ apy: 4, poolId: 'pool-yrk' })], [{
+      apy: 0,
+      apyAvailable: false,
+      contractId: 'contract-yrk',
+      id: 'pool-yrk',
+    }])
+
+    expect(out[0].apy).toBe(4)
   })
 })

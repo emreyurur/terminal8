@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchPoolDashboard, type PoolDashboardResponse } from '../services/terminal8Api'
 
 export type PoolDashboardData = PoolDashboardResponse
@@ -9,34 +9,34 @@ export type PoolDashboardState =
   | { status: 'success'; data: PoolDashboardData }
   | { status: 'error' }
 
-export function usePoolDashboard(poolId: string | null): PoolDashboardState {
+export function usePoolDashboard(poolId: string | null) {
   const [state, setState] = useState<PoolDashboardState>({ status: 'idle' })
+  const requestVersion = useRef(0)
 
-  useEffect(() => {
+  const refresh = useCallback(async (silent = false) => {
+    const version = ++requestVersion.current
     if (!poolId) {
-      queueMicrotask(() => setState({ status: 'idle' }))
+      setState({ status: 'idle' })
       return
     }
 
-    let cancelled = false
-    queueMicrotask(() => {
-      if (!cancelled) setState({ status: 'loading' })
-    })
-
-    const controller = new AbortController()
-    fetchPoolDashboard(poolId, controller.signal)
-      .then((data) => {
-        if (!cancelled) setState({ status: 'success', data })
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: 'error' })
-      })
-
-    return () => {
-      cancelled = true
-      controller.abort()
+    if (!silent) setState({ status: 'loading' })
+    try {
+      const data = await fetchPoolDashboard(poolId)
+      if (version === requestVersion.current) setState({ status: 'success', data })
+    } catch {
+      if (!silent && version === requestVersion.current) setState({ status: 'error' })
     }
   }, [poolId])
 
-  return state
+  useEffect(() => {
+    queueMicrotask(() => {
+      void refresh()
+    })
+    return () => {
+      requestVersion.current += 1
+    }
+  }, [refresh])
+
+  return { state, refresh }
 }

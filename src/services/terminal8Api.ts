@@ -457,14 +457,30 @@ export interface PoolDashboardResponse {
 }
 
 export async function fetchPoolDashboard(poolId: string, signal?: AbortSignal): Promise<PoolDashboardResponse> {
-  const res = await fetch(`${API_BASE}api/v1/pools/${encodeURIComponent(poolId)}/dashboard`, {
-    headers: { accept: 'application/json' },
-    signal,
-  })
-  if (!res.ok) {
-    throw new Error(`Failed to fetch pool dashboard (${res.status})`)
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetch(`${API_BASE}api/v1/pools/${encodeURIComponent(poolId)}/dashboard`, {
+        headers: { accept: 'application/json' },
+        signal,
+      })
+      if (res.ok) return res.json()
+
+      const error = new Error(`Failed to fetch pool dashboard (${res.status})`)
+      if (res.status !== 429 && res.status < 500) throw error
+      lastError = error
+    } catch (error) {
+      if (signal?.aborted) throw error
+      lastError = error
+    }
+
+    if (attempt < 2) {
+      await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)))
+    }
   }
-  return res.json()
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to fetch pool dashboard')
 }
 
 /**

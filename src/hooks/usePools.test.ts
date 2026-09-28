@@ -81,4 +81,22 @@ describe('mapApiPoolToDeFiPool', () => {
     expect(mapped.tvl).toBe('--')
     expect(mapped.trustScore).toBeUndefined()
   })
+
+  it('does not treat a zero risk estimate as live APY when the dashboard request fails', () => {
+    const mapped = mapApiPoolToDeFiPool(pool('yrk-xlm', 'yrk', 'XLM'), {
+      risk: {
+        poolId: 'yrk-xlm',
+        trustScore: 50,
+        tvlScore: 10,
+        volatilityScore: 50,
+        apyScore: 25,
+        compositeScore: 33,
+        riskLevel: 'HIGH',
+        estimatedApy: 0,
+      },
+    })
+
+    expect(mapped.apy).toBe(0)
+    expect(mapped.apyAvailable).toBe(false)
+  })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { truncatePublicKey, formatCurrency } from './format'
+import { truncatePublicKey, formatCurrency, formatSignedCurrency } from './format'
 
 describe('truncatePublicKey', () => {
   it('returns short keys unchanged', () => {
@@ -40,5 +40,23 @@ describe('formatCurrency', () => {
 
   it('rounds to 2 decimal places', () => {
     expect(formatCurrency(9.999)).toBe('$10.00')
+  })
+})
+
+describe('formatSignedCurrency', () => {
+  it('adds a plus sign to gains', () => {
+    expect(formatSignedCurrency(125.5)).toBe('+$125.50')
+  })
+
+  it('formats losses with one leading minus sign', () => {
+    expect(formatSignedCurrency(-42.25)).toBe('-$42.25')
+  })
+
+  it('keeps zero neutral', () => {
+    expect(formatSignedCurrency(0)).toBe('$0.00')
+  })
+
+  it('supports precision for small PnL values', () => {
+    expect(formatSignedCurrency(-0.0008, 4)).toBe('-$0.0008')
   })
 })

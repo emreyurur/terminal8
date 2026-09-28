@@ -13,6 +13,7 @@ import {
   type ApiHistoryItem,
 } from '../../services/terminal8Api'
 import { computeWithdrawShares } from '../../lib/lpShares'
+import { formatSignedCurrency } from '../../lib/format'
 import { buildPositionMetricSeries, type PositionMetric, type PositionMetricPoint } from '../../lib/positionMetrics'
 import { findActivePositionForPool } from '../../lib/vaultVoting'
 import { MetricValueFallback } from './MetricValueFallback'
@@ -25,6 +26,12 @@ import type { DeFiPool, LocalPosition } from '../../types/stellar'
 
 function getNowTimestamp(): number {
   return Date.now()
+}
+
+function pnlTextColor(value: number): string {
+  if (value < 0) return 'text-[#FF5C6C]'
+  if (value > 0) return 'text-[#35D49A]'
+  return 'text-[#98A6B7]'
 }
 
 // ─── Token Avatars ────────────────────────────────────────────────────────────
@@ -260,7 +267,10 @@ function PositionMetricChart({ data, metric }: { data: PositionMetricPoint[]; me
   const minValue = Math.min(...values, 0)
   const maxValue = Math.max(...values, 0)
   const range = Math.max(1, maxValue - minValue)
-  const color = metric === 'interest' ? '#35D49A' : metric === 'apy' ? '#F2C12E' : '#3B82F6'
+  const latestValue = values.at(-1) ?? 0
+  const color = metric === 'interest'
+    ? latestValue < 0 ? '#FF5C6C' : latestValue > 0 ? '#35D49A' : '#98A6B7'
+    : metric === 'apy' ? '#F2C12E' : '#3B82F6'
   const points = data.map((point, index) => ({
     ...point,
     x: data.length === 1 ? width / 2 : padX + (index / (data.length - 1)) * chartWidth,
@@ -305,7 +315,7 @@ function PositionMetricChart({ data, metric }: { data: PositionMetricPoint[]; me
       {activePoint && (
         <div className="absolute right-2 top-0 rounded-md border border-white/[0.1] bg-[#0D0D14]/90 px-3 py-1.5 text-xs shadow-xl backdrop-blur-md">
           <span className="mr-3 text-[#9CA3AF]">{activePoint.date}</span>
-          <span className="font-mono font-semibold text-white">{formatValue(activePoint.value)}</span>
+          <span className={`font-mono font-semibold ${metric === 'interest' ? pnlTextColor(activePoint.value) : 'text-white'}`}>{formatValue(activePoint.value)}</span>
         </div>
       )}
     </div>
@@ -351,6 +361,7 @@ export function PoolDetailsView({
   onBack,
   onTabChange,
   onPositionAdded,
+  onPositionMetricsRefresh,
   onPositionRemoved,
   pool,
   positionMetricsLoading = false,
@@ -361,6 +372,7 @@ export function PoolDetailsView({
   onBack: () => void
   onTabChange?: (tab: 'overview' | 'position') => void
   onPositionAdded: (pos: Omit<LocalPosition, 'id'>) => void
+  onPositionMetricsRefresh?: () => void
   onPositionRemoved?: (id: string, amount: number) => void
   pool: DeFiPool
   positionMetricsLoading?: boolean
@@ -368,7 +380,22 @@ export function PoolDetailsView({
 }) {
   const { connect, networkPassphrase, networkUrl, publicKey, status } = useWallet()
   const riskState = usePoolRisk(pool.id)
-  const dashboardState = usePoolDashboard(pool.id)
+  const { state: dashboardState, refresh: refreshPoolDashboard } = usePoolDashboard(pool.id)
+  const dashboardRefreshTimers = useRef<number[]>([])
+
+  const refreshMetricsAfterTransaction = useCallback(() => {
+    onPositionMetricsRefresh?.()
+    dashboardRefreshTimers.current.forEach((timer) => window.clearTimeout(timer))
+    void refreshPoolDashboard(false)
+    dashboardRefreshTimers.current = [1_500, 3_500, 6_000].map((delay) => window.setTimeout(() => {
+      void refreshPoolDashboard(true)
+    }, delay))
+  }, [onPositionMetricsRefresh, refreshPoolDashboard])
+
+  useEffect(() => () => {
+    dashboardRefreshTimers.current.forEach((timer) => window.clearTimeout(timer))
+    dashboardRefreshTimers.current = []
+  }, [])
 
   // Page Navigation Tabs: 'overview' | 'position'
   const [activePageTab, setActivePageTab] = useState<'overview' | 'position'>(initialTab)
@@ -667,6 +694,7 @@ export function PoolDetailsView({
         poolId: pool.id,
       })
       selectPageTab('position')
+      refreshMetricsAfterTransaction()
     } catch (error) {
       setTxState('error')
       setTxMessage(error instanceof Error ? error.message : 'Transaction failed.')
@@ -703,6 +731,7 @@ export function PoolDetailsView({
       if (onPositionRemoved) {
         onPositionRemoved(pos.id, amountToWithdraw)
       }
+      refreshMetricsAfterTransaction()
     } catch (error) {
       setWithdrawTxState('error')
       setWithdrawTxMessage(error instanceof Error ? error.message : 'Withdraw failed.')
@@ -845,9 +874,9 @@ export function PoolDetailsView({
             <p className="mt-1 text-xs text-[#9CA3AF]">Staked Shares</p>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-[#111119] p-5">
-            <p className="font-mono flex h-8 items-center text-xl font-extrabold text-[#16A34A] sm:text-2xl">
+            <p className={`font-mono flex h-8 items-center text-xl font-extrabold sm:text-2xl ${hasPositionPnl ? pnlTextColor(safeEarnedUsd) : 'text-[#98A6B7]'}`}>
               {hasPositionPnl
-                ? `+$${safeEarnedUsd.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`
+                ? formatSignedCurrency(safeEarnedUsd, 4)
                 : <MetricValueFallback loading={positionMetricsLoading} />}
             </p>
             <p className="mt-1 text-xs text-[#9CA3AF]">Interest Earned</p>
@@ -1334,7 +1363,10 @@ export function PoolDetailsView({
                 canSign={canSign}
                 networkUrl={networkUrl}
                 onPositionAdded={recordPosition}
-                onConfirmed={() => selectPageTab('position')}
+                onConfirmed={() => {
+                  selectPageTab('position')
+                  refreshMetricsAfterTransaction()
+                }}
                 pool={pool}
                 publicKey={publicKey}
               />
@@ -1531,25 +1563,11 @@ export function PoolDetailsView({
               )}
 
               {withdrawTxState === 'submitted' && withdrawTxHash && (
-                <div className="mt-4 rounded-xl border border-[#16A34A]/30 bg-[#16A34A]/10 p-4">
-                  <div className="flex items-start gap-3">
-                    <svg className="size-5 shrink-0 text-[#16A34A]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-[#16A34A]">Withdrawal Confirmed</p>
-                      <p className="mt-0.5 text-xs text-[#9CA3AF]">Asset withdrawn to wallet.</p>
-                      <a
-                        className="mt-2.5 block truncate rounded-lg border border-[#16A34A]/20 bg-white/[0.04] px-3 py-1.5 font-mono text-xs text-white hover:border-[#16A34A]/40"
-                        href={`https://stellar.expert/explorer/testnet/tx/${withdrawTxHash}`}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {withdrawTxHash}
-                      </a>
-                    </div>
-                  </div>
-                </div>
+                <TransactionReceipt
+                  hash={withdrawTxHash}
+                  subtitle="Assets returned to your wallet."
+                  title="Withdrawal confirmed"
+                />
               )}
             </>
           )}
