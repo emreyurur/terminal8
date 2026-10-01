@@ -62,6 +62,82 @@ export class HistoryService {
     }
   }
 
+  async syncSingleTransaction(txHash: string, expectedPoolId: string) {
+    try {
+      const records = await this.horizonClient.fetchTransactionOperations(txHash);
+      if (!records || records.length === 0) return;
+
+      const transactionsToInsert: any[] = [];
+
+      for (const op of records) {
+        let txType: TransactionType;
+        let assetA = "";
+        let amountA = "";
+        let assetB = "";
+        let amountB = "";
+        let sharesAmount = "0";
+
+        if (op.type === "liquidity_pool_deposit") {
+          txType = TransactionType.DEPOSIT;
+          const depOp = op as any;
+          if (depOp.liquidity_pool_id !== expectedPoolId) continue;
+          sharesAmount = depOp.shares_received || "0";
+          const reserves = depOp.reserves_deposited || depOp.reserves_max;
+          if (reserves && reserves.length === 2) {
+            assetA = reserves[0].asset || "XLM";
+            amountA = reserves[0].amount;
+            assetB = reserves[1].asset || "XLM";
+            amountB = reserves[1].amount;
+          }
+        } else if (op.type === "liquidity_pool_withdraw") {
+          txType = TransactionType.WITHDRAW;
+          const witOp = op as any;
+          if (witOp.liquidity_pool_id !== expectedPoolId) continue;
+          sharesAmount = witOp.shares || "0";
+          const reserves = witOp.reserves_received || witOp.reserves_min;
+          if (reserves && reserves.length === 2) {
+            assetA = reserves[0].asset || "XLM";
+            amountA = reserves[0].amount;
+            assetB = reserves[1].asset || "XLM";
+            amountB = reserves[1].amount;
+          }
+        } else {
+          continue;
+        }
+
+        if (assetA && assetA.includes(":")) assetA = assetA.split(":")[0];
+        if (assetB && assetB.includes(":")) assetB = assetB.split(":")[0];
+
+        transactionsToInsert.push({
+          operationId: op.id,
+          occurredAt: new Date(op.created_at),
+          sharesAmount,
+          userPublicKey: op.source_account,
+          poolId: expectedPoolId,
+          type: txType,
+          assetA: assetA || "Unknown",
+          amountA: amountA || "0",
+          assetB: assetB,
+          amountB: amountB,
+          tx: op.transaction_hash,
+        });
+      }
+
+      if (transactionsToInsert.length > 0) {
+        await this.historyRepository
+          .createQueryBuilder()
+          .insert()
+          .into(TransactionHistory)
+          .values(transactionsToInsert)
+          .orIgnore()
+          .execute();
+        this.logger.debug(`Synchronously indexed ${transactionsToInsert.length} operations for tx ${txHash}`);
+      }
+    } catch (err) {
+      this.logger.error(`Error in syncSingleTransaction for tx ${txHash}: ${err.message}`);
+    }
+  }
+
   async getUserHistory(publicKey: string, limit = 50, page = 1) {
     const skip = (page - 1) * limit;
 

@@ -61,7 +61,7 @@ export class PortfolioController {
     @CurrentUserPublicKey() publicKey: string,
     @Body() dto: SyncPositionDto,
   ) {
-    await this.portfolioService.syncPosition(publicKey, dto.poolId);
+    await this.portfolioService.syncPosition(publicKey, dto.poolId, dto.txHash);
     return { success: true };
   }
 }

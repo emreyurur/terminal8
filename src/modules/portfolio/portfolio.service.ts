@@ -157,7 +157,11 @@ export class PortfolioService {
   }
 
   // Frontend'den başarılı işlem sonrasında webhook/callback geldiğinde çağrılır
-  async syncPosition(publicKey: string, poolId: string) {
+  async syncPosition(publicKey: string, poolId: string, txHash?: string) {
+    if (txHash) {
+      this.logger.log(`Syncing single transaction ${txHash} for pool ${poolId}`);
+      await this.historyService.syncSingleTransaction(txHash, poolId);
+    }
     // İşlem başarılı olduktan sonra doğrudan ağdan en güncel havuz ve bakiye bilgilerini çekiyoruz.
     // Frontend'in gönderdiği tahmini "10.0" share gibi değerleri eklemek Interest Earned bug'ına yol açıyor.
     await this.scoutService.forceFetchPool(poolId);

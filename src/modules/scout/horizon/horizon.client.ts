@@ -231,4 +231,16 @@ export class HorizonClient {
     const records = response.data._embedded.records;
     return { records, hasMore: records.length >= limit };
   }
+
+  async fetchTransactionOperations(txHash: string): Promise<any[]> {
+    try {
+      const response = await this.axios.get(`/transactions/${txHash}/operations`, {
+        params: { limit: 200 },
+      });
+      return response.data._embedded.records;
+    } catch (error) {
+      this.logger.error(`Failed to fetch operations for tx ${txHash}: ${error.message}`);
+      return [];
+    }
+  }
 }

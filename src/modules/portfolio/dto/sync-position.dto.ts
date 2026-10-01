@@ -5,11 +5,5 @@ export class SyncPositionDto {
   poolId: string;
 
   @ApiProperty()
-  sharesAmount: string;
-
-  @ApiProperty()
-  assetAAmount: string;
-
-  @ApiProperty()
-  assetBAmount: string;
+  txHash: string;
 }
